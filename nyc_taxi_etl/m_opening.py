@@ -30,7 +30,7 @@ def request_info_from_ZIP(zipfile_dir):
     print(f"---------------------- Done in {mins}'{secs}''")
     return f
 
-def getting_df_fromZip(zipfile_info, minLen_toDisgard):
+def getting_df_fromZip(zipfile_info, minLen_toDisgard, first_row = 5, num_rows = 35):
     """
     input
     output
@@ -49,22 +49,30 @@ def getting_df_fromZip(zipfile_info, minLen_toDisgard):
                 with zip_.open(filename) as file_:
                     if len(filenames) == 0:
                         # for first file in data.zip
-                        first_frame = pd.read_csv(file_, sep=',')
+                        first_frame = pd.read_csv(file_, sep=',', low_memory=False)
+                        # for the sake of the exercise
+                        # only 1 every 35 rows are read
+                        frame_to_use = first_frame.loc[first_row::num_rows, :]
+                        #
                         column_names = first_frame.columns.tolist()
                         filenames.append(filename);
-                        frame_to_concat.append(first_frame)
-                        memory_usage = first_frame.memory_usage(index=True, deep=False).sum() / (1000 * 1024)
+                        frame_to_concat.append(frame_to_use)
+                        memory_usage = frame_to_use.memory_usage(index=True, deep=False).sum() / (1000 * 1024)
                         print(
-                            f"{filename} \tDone \t Memory Usage: {np.around(memory_usage, 2)} Mb \t Shape {first_frame.shape}")
+                            f"{filename} \tDone \t Memory Usage: {np.around(memory_usage, 2)} Mb \t Shape {frame_to_use.shape}")
 
                     else:
-                        new_frame = pd.read_csv(file_, sep=',', names=column_names)
+                        new_frame = pd.read_csv(file_, sep=',', names=column_names, low_memory=False)
+                        # for the sake of the exercise
+                        # only 1 every 35 rows are read
+                        frame_to_use = new_frame.loc[first_row::num_rows, :]
+                        #
                         filenames.append(filename);
-                        frame_to_concat.append(new_frame)
-                        memory_usage += new_frame.memory_usage(index=True, deep=False).sum() / (1000 * 1024)
+                        frame_to_concat.append(frame_to_use)
+                        memory_usage += frame_to_use.memory_usage(index=True, deep=False).sum() / (1000 * 1024)
 
                         print(
-                            f"{filename} \tDone \t Memory Usage: {np.around(memory_usage, 2)} Mb \t Shape {new_frame.shape}")
+                            f"{filename} \tDone \t Memory Usage: {np.around(memory_usage, 2)} Mb \t Shape {frame_to_use.shape}")
 
     toc = time.perf_counter();
     mins = (toc - tic) // 60;

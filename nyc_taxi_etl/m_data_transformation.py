@@ -8,6 +8,7 @@ import time
 # for data
 import re
 import numpy as np
+import geopandas as gpd
 import pandas as pd
 
 
@@ -90,8 +91,22 @@ def coord_to_geomObject(df, drop_bool=False):
 # --------------------------------------------------------------------------------------------------- PRICES TO POSITIVE NUMBS
 
 def abs_var_col(df, cols):
+    """
+    some numerics cols for prices are negative (all row neg). This is a corrective def
+    """
+    print(f"\n---------------------- Transform NEG PRICES to POSITIVE PRICES")
+    tic = time.perf_counter()
+
     for col in cols:
-        df[col] = np.abs(df[col])
+        try:
+            df[col] = np.abs(df[col])
+        except:
+            pass
+
+    toc = time.perf_counter()
+    mins = (toc - tic) // 60; secs = np.around((toc - tic) % 60, 3)
+
+    print(f" Objects transformed in {mins}'{secs}''")
 
 # --------------------------------------------------------------------------------------------------- GETTING RID OF CASH ERRORS
 
@@ -99,6 +114,8 @@ def total_amount_inconsistency(df, cols_to_sum, total_col):
     """
     drop all cols that are inconsistent in the total amount payed for the trip
     """
+    print(f"\n---------------------- Dropping CASH ERRORS")
+    tic = time.perf_counter()
 
     # create col for and drop if aux_col == False
     aux_col = 'amount_equality'
@@ -108,4 +125,10 @@ def total_amount_inconsistency(df, cols_to_sum, total_col):
 
     # del aux_col
     df.drop(columns=[aux_col], axis=1, inplace=True)
+    toc = time.perf_counter()
+    mins = (toc - tic) // 60;
+    secs = np.around((toc - tic) % 60, 3)
+
+    print(f" Objects transformed in {mins}'{secs}''")
     # no return
+
