@@ -87,6 +87,24 @@ def coord_to_geomObject(df, drop_bool=False):
     if drop_bool: df.drop(columns=latitude + longitud, axis=1, inplace=True)
     # no return
 
+# --------------------------------------------------------------------------------------------------- OUTLIERS
+
+def clean_outliers(df, columns, iqr_range):
+    """
+    Returns df without outliers in defined columns defined range
+    """
+
+    columns = ['pickup_latitude', 'pickup_longitude', 'dropoff_longitude', 'dropoff_latitude']
+
+    iqr_range_sorted = sorted(iqr_range)
+
+    Q_down = df[columns].quantile(iqr_range_sorted[0])
+    Q_up = df[columns].quantile(iqr_range_sorted[1])
+    IQR = Q_up - Q_down
+
+    filtr = ((df[columns] < (Q_down - 1.5 * IQR)) | (df[columns] > (Q_up + 1.5 * IQR)))
+
+    return df[~filtr.any(axis=1)]
 
 # --------------------------------------------------------------------------------------------------- PRICES TO POSITIVE NUMBS
 

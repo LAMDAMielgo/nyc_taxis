@@ -24,6 +24,7 @@ VENDORID_DICT, RATECODEID_DICT, PAYMENTTYPE_DICT = GL.VENDORID_DICT, GL.RATECODE
 from nyc_taxi_etl.m_data_transformation import datetime_transformations
 from nyc_taxi_etl.m_data_transformation import coord_to_geomObject
 from nyc_taxi_etl.m_data_transformation import abs_var_col
+from nyc_taxi_etl.m_data_transformation import clean_outliers
 from nyc_taxi_etl.m_data_transformation import total_amount_inconsistency
 
 def data_etl(df_to_transform, dict_ratecodeID, dict_paymenttype, drop_cols=True):
@@ -32,6 +33,7 @@ def data_etl(df_to_transform, dict_ratecodeID, dict_paymenttype, drop_cols=True)
     output
     """
     datetime_cols = ['tpep_pickup_datetime', 'tpep_dropoff_datetime']
+    geom_cols = ['pickup_latitude', 'pickup_longitude', 'dropoff_longitude', 'dropoff_latitude']
     abs_cols = ['fare_amount', 'extra', 'mta_tax', 'tip_amount', 'improvement_surcharge', 'tolls_amount',
                 'total_amount']
     cat_cols = ['RatecodeID', 'payment_type']
@@ -39,15 +41,20 @@ def data_etl(df_to_transform, dict_ratecodeID, dict_paymenttype, drop_cols=True)
     total_payment_col = 'total_amount'
     cols_to_drop = ['VendorID', 'store_and_fwd_flag', 'total_amount']
 
-    existing_cols = set(datetime_cols + abs_cols + cat_cols + num_cols_to_sum + [total_payment_col] + cols_to_drop)
+    existing_cols = set(datetime_cols + geom_cols + abs_cols + cat_cols + num_cols_to_sum + [total_payment_col] + cols_to_drop)
 
     assert existing_cols not in df_to_transform.columns.tolist()
+
 
     # 1.1
     # OBJECT TO DATETIME
     datetime_transformations(datetime_cols=datetime_cols,
                              df=df_to_transform, drop_cols=True)
     # 1.2
+    # GET RID OF OUTLIERS
+    df_to_transform = clean_outliers(df = df_to_transform,
+                                     columns = geom_cols,
+                                     iqr_range = [0.05, 0.95])
     # OBJECT TO GEOMETRY
     coord_to_geomObject(df_to_transform, drop_bool=True)
 
