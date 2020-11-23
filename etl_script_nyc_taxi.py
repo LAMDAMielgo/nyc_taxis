@@ -49,14 +49,15 @@ def data_etl(df_to_transform, dict_ratecodeID, dict_paymenttype, drop_cols=True)
     # 1.1
     # OBJECT TO DATETIME
     datetime_transformations(datetime_cols=datetime_cols,
-                             df=df_to_transform, drop_cols=True)
+                             df=df_to_transform,
+                             drop_cols=True)
     # 1.2
     # GET RID OF OUTLIERS
-    df_to_transform = clean_outliers(df = df_to_transform,
-                                     columns = geom_cols,
-                                     iqr_range = [0.05, 0.95])
+    df_to_transform = clean_outliers(df=df_to_transform,
+                                     columns=geom_cols,
+                                     iqr_range=[0.15, 0.85])
     # OBJECT TO GEOMETRY
-    coord_to_geomObject(df_to_transform, drop_bool=True)
+    coord_to_geomObject(df_to_transform, drop_bool=False)
 
     # 2
     # NUMERIC COLS IN ABSOLUTES
