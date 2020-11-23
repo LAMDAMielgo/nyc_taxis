@@ -25,6 +25,7 @@ from nyc_taxi_etl.m_data_transformation import datetime_transformations
 from nyc_taxi_etl.m_data_transformation import coord_to_geomObject
 from nyc_taxi_etl.m_data_transformation import abs_var_col
 from nyc_taxi_etl.m_data_transformation import total_amount_inconsistency
+from nyc_taxi_etl.m_data_transformation import clean_outliers
 
 # ---------------------------------------------------------------------------------------------------  DEFS
 
@@ -34,6 +35,7 @@ def data_etl(df_to_transform, dict_ratecodeID, dict_paymenttype, drop_cols=True)
     output
     """
     datetime_cols = ['tpep_pickup_datetime', 'tpep_dropoff_datetime']
+    geom_cols = ['pickup_latitude', 'pickup_longitude', 'dropoff_longitude', 'dropoff_latitude']
     abs_cols = ['fare_amount', 'extra', 'mta_tax', 'tip_amount', 'improvement_surcharge', 'tolls_amount',
                 'total_amount']
     cat_cols = ['RatecodeID', 'payment_type']
@@ -41,7 +43,7 @@ def data_etl(df_to_transform, dict_ratecodeID, dict_paymenttype, drop_cols=True)
     total_payment_col = 'total_amount'
     cols_to_drop = ['VendorID', 'store_and_fwd_flag', 'total_amount']
 
-    existing_cols = set(datetime_cols + abs_cols + cat_cols + num_cols_to_sum + [total_payment_col] + cols_to_drop)
+    existing_cols = set(datetime_cols + geom_cols + abs_cols + cat_cols + num_cols_to_sum + [total_payment_col] + cols_to_drop)
 
     assert existing_cols not in df_to_transform.columns.tolist()
 
@@ -50,17 +52,22 @@ def data_etl(df_to_transform, dict_ratecodeID, dict_paymenttype, drop_cols=True)
     datetime_transformations(datetime_cols=datetime_cols,
                              df=df_to_transform, drop_cols=True)
     # 1.2
+    # Points have outliers
+    # OUTLIERS
+    df_without_outliers = clean_outliers(df=df_to_transform,
+                                         columns=geom_cols,
+                                         iqr_range=[0.15, 0.85])
     # OBJECT TO GEOMETRY
-    coord_to_geomObject(df_to_transform, drop_bool=True)
+    coord_to_geomObject(df_without_outliers, drop_bool=True)
 
     # 2
     # NUMERIC COLS IN ABSOLUTES
-    abs_var_col(df_to_transform, cols=abs_cols)
+    abs_var_col(df_without_outliers, cols=abs_cols)
 
     # 3
     # CATEGORICAL COLUMNS
-    df_to_transform[cat_cols[0]] = df_to_transform[cat_cols[0]].apply(lambda col: dict_ratecodeID[col])
-    df_to_transform[cat_cols[1]] = df_to_transform[cat_cols[1]].apply(lambda col: dict_paymenttype[col])
+    df_without_outliers[cat_cols[0]] = df_without_outliers[cat_cols[0]].apply(lambda col: dict_ratecodeID[col])
+    df_without_outliers[cat_cols[1]] = df_without_outliers[cat_cols[1]].apply(lambda col: dict_paymenttype[col])
 
     #  4
     # Drops columns with inconsistency in amount
@@ -68,8 +75,8 @@ def data_etl(df_to_transform, dict_ratecodeID, dict_paymenttype, drop_cols=True)
     #                           cols_to_sum = num_cols_to_sum,
     #                           total_col = total_payment_col)
 
-    if drop_cols: df_to_transform.drop(columns=cols_to_drop, axis=1, inplace=True)
+    if drop_cols: df_without_outliers.drop(columns=cols_to_drop, axis=1, inplace=True)
     else: pass
 
-    return df_to_transform
+    return df_without_outliers
 

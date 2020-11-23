@@ -45,23 +45,24 @@ def data_etl(df_to_transform, dict_ratecodeID, dict_paymenttype, drop_cols=True)
 
     assert existing_cols not in df_to_transform.columns.tolist()
 
-
+    # OUTLIERS
+    df_to_transform = clean_outliers(df=df_to_transform,
+                                     columns=geom_cols,
+                                     iqr_range=[0.15, 0.85])
     # 1.1
     # OBJECT TO DATETIME
     datetime_transformations(datetime_cols=datetime_cols,
                              df=df_to_transform,
                              drop_cols=True)
     # 1.2
-    # GET RID OF OUTLIERS
-    df_to_transform = clean_outliers(df=df_to_transform,
-                                     columns=geom_cols,
-                                     iqr_range=[0.15, 0.85])
     # OBJECT TO GEOMETRY
-    coord_to_geomObject(df_to_transform, drop_bool=False)
+    coord_to_geomObject(df_to_transform,
+                        drop_bool=False)
 
     # 2
     # NUMERIC COLS IN ABSOLUTES
-    abs_var_col(df_to_transform, cols=abs_cols)
+    abs_var_col(df_to_transform,
+                cols=abs_cols)
 
     # 3
     # CATEGORICAL COLUMNS
@@ -70,9 +71,9 @@ def data_etl(df_to_transform, dict_ratecodeID, dict_paymenttype, drop_cols=True)
 
     #  4
     # Drops columns with inconsistency in amount
-    #total_amount_inconsistency(df = df_to_transform,
-    #                           cols_to_sum = num_cols_to_sum,
-    #                           total_col = total_payment_col)
+    total_amount_inconsistency(df = df_to_transform,
+                               cols_to_sum = num_cols_to_sum,
+                               total_col = total_payment_col)
 
     if drop_cols: df_to_transform.drop(columns=cols_to_drop, axis=1, inplace=True)
     else: pass
