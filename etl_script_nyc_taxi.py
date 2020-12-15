@@ -46,9 +46,9 @@ def data_etl(df_to_transform, dict_ratecodeID, dict_paymenttype, drop_cols=True)
     assert existing_cols not in df_to_transform.columns.tolist()
 
     # OUTLIERS
-    df_to_transform = clean_outliers(df=df_to_transform,
-                                     columns=geom_cols,
-                                     iqr_range=[0.15, 0.85])
+    # df_to_transform = clean_outliers(df=df_to_transform,
+    #                                 columns=geom_cols,
+    #                                 iqr_range=[0.15, 0.85])
     # 1.1
     # OBJECT TO DATETIME
     datetime_transformations(datetime_cols=datetime_cols,
@@ -71,9 +71,9 @@ def data_etl(df_to_transform, dict_ratecodeID, dict_paymenttype, drop_cols=True)
 
     #  4
     # Drops columns with inconsistency in amount
-    total_amount_inconsistency(df = df_to_transform,
-                               cols_to_sum = num_cols_to_sum,
-                               total_col = total_payment_col)
+    #total_amount_inconsistency(df = df_to_transform,
+    #                           cols_to_sum = num_cols_to_sum,
+    #                           total_col = total_payment_col)
 
     if drop_cols: df_to_transform.drop(columns=cols_to_drop, axis=1, inplace=True)
     else: pass
@@ -95,11 +95,13 @@ def main(zipfile_dir, drop_columns_in_cleaning, ratecode_dict, payment_dict):
     frames = getting_df_fromZip(zipfile_info = info_from_zip,
                                 minLen_toDisgard = 7,
                                 first_row = 5,
-                                num_rows = 35)
+                                num_rows = 55)
+
 
     for i, frame in enumerate(frames[::2]):
         print(f"\n\n{i} Frame ---------------------------------------------")
         tic = time.perf_counter()
+
         data_etl(df_to_transform=frame,
                dict_ratecodeID = ratecode_dict,
                dict_paymenttype = payment_dict,

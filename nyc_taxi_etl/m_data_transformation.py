@@ -1,15 +1,10 @@
 # for files
-import os
-import zipfile
-import requests
-from io import BytesIO
 import time
-
 # for data
 import re
 import numpy as np
 import geopandas as gpd
-import pandas as pd
+
 
 
 # --------------------------------------------------------------------------------------------------- OBJECT TO DATETIME
@@ -46,7 +41,7 @@ def datetime_transformations(datetime_cols, df, drop_cols):
         tic = time.perf_counter()
         new_col_name = Dtime_col.split("_")[1] + '_' + Dtime_col.split("_")[2]
 
-        df[new_col_name] = str_to_datetime_vect(df[Dtime_col])
+        df.loc[:,new_col_name] = str_to_datetime_vect(df.loc[:,Dtime_col])
         if drop_cols: df.drop(columns=[Dtime_col], axis=1, inplace=True)
 
         toc = time.perf_counter();
@@ -64,6 +59,8 @@ def coord_to_geomObject(df, drop_bool=False):
     input: df[lat], df[long] --> 40  3
     output: df[point]        --> Point(40,3)
     """
+    print(f"---------------------- Transform OBJECT to GEOM")
+
     # find pairs
     latitude = sorted([col for col in df.columns if re.findall(r'latitud', col)])
     longitud = sorted([col for col in df.columns if re.findall(r'longitude', col)])
@@ -80,12 +77,12 @@ def coord_to_geomObject(df, drop_bool=False):
         if lng.split('longitude') == lat.split('latitude'):
             new_col_name = [n.strip() + 'geometry' for n in lng.split('longitude') if len(n) != 0][0]
 
-        df[new_col_name] = gpd.points_from_xy(df[lng], df[lat])
+        df.loc[:,new_col_name] = gpd.points_from_xy(df.loc[:,lng], df.loc[:,lat])
         print(f"Adding new col:\t {new_col_name}\tDone")
 
     print(f"\nDropping cols {latitude + longitud}\t\t{str(drop_bool).upper()}")
     if drop_bool: df.drop(columns=latitude + longitud, axis=1, inplace=True)
-    # no return
+
 
 # --------------------------------------------------------------------------------------------------- OUTLIERS
 
@@ -101,10 +98,9 @@ def clean_outliers(df, columns, iqr_range):
     IQR = Q_up - Q_down
 
     filtr = ((df[columns] < (Q_down - 1.5 * IQR)) | (df[columns] > (Q_up + 1.5 * IQR)))
-    df = df[~filtr.any(axis=1)]
     print(f"Done")
 
-    return df
+    return df[~filtr.any(axis=1)]
 
 # --------------------------------------------------------------------------------------------------- PRICES TO POSITIVE NUMBS
 
@@ -116,15 +112,14 @@ def abs_var_col(df, cols):
     tic = time.perf_counter()
 
     for col in cols:
-        try:
-            df[col] = np.abs(df[col])
-        except:
-            pass
+        try: df.loc[:,col] = df.loc[:,col].abs()
+        except: pass
 
     toc = time.perf_counter()
     mins = (toc - tic) // 60; secs = np.around((toc - tic) % 60, 3)
 
     print(f" Objects transformed in {mins}'{secs}''")
+    return df
 
 # --------------------------------------------------------------------------------------------------- GETTING RID OF CASH ERRORS
 
