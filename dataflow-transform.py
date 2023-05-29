@@ -293,24 +293,66 @@ def ParseAndValidateDatetime(pcol:PCollection) -> PCollection[Dict[str,str]]:
     )
 
 
-# @beam.ptransform_fn
-# @beam.typehints.with_output_types(PCollection[Dict[str, str]])
-# def ParseAndMapNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
+@beam.ptransform_fn
+@beam.typehints.with_output_types(PCollection[Dict[str, str]])
+def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
     
-#     def map_key(_key):
-#         def wrap(row):
-#             row.update({_key: META[_key][row[_key]]})
-#             return row
-#         return wrap
+    from ast import literal_eval
+    from numpy import logical_or, logical_and
+    KEYS = META['key']
+
+    HEADER = list(META['raw']['schema'])
+    ids_cols = [_ for _ in HEADER if logical_or.reduce([
+            _.lower().endswith('id'), 
+            _.endswith('flag')
+        ])
+    ]
+    num_cols = [_ for _ in HEADER if logical_or.reduce([
+            not _.endswith('itude'),
+            not _.endswith('datetime'),
+            _ not in ids_cols
+        ])
+    ]
+    nonnull_cols = [_ for _ in num_cols if logical_or.reduce([
+            _.endswith('count'), 
+            _.endswith('distance')
+        ])
+    ]
+
+    def map_key(_key):
+        def wrap(row):
+            row.update({_key: KEYS[_key][row[_key]]})
+            return row
+        return wrap
     
-#     def eval_nums(row):
-#         row.update({k: literal_eval(row[k]) for k in num_cols})
-#         return row
+    def eval_nums(row):
+        row.update({k: round(literal_eval(row[k]),3) for k in num_cols})
+        return row
 
-#     for k in ids_cols:
-#         ( pcol | f"Map {k} values" >> beam.Map(map_key(k)))
+    def drop_nonzerocols(row):
+        if any(row[k] <= 0.01 for k in nonnull_cols):
+            return False
+        else:
+            return True
 
-#     return ( pcol | "Parse numeric columns" >> beam.Map(eval_nums) )
+    def create_hash(row):
+        row['id'] = "{centroid_x}_{centroid_y}_{mult}".format(
+            centroid_x=str(row.pop('centroid_latitude')).replace('.', ''),
+            centroid_y=str(row.pop('centroid_longitude')).replace('.', ''),
+            mult=str(row['trip_distance']*row['extra']+row['tip_amount'])[:4]
+        )
+        return row
+
+
+    for k in ids_cols:
+        ( pcol | f"Map {k} values" >> beam.Map(map_key(k)))
+
+    return ( 
+        pcol 
+            | "Parse numeric columns" >> beam.Map(eval_nums)
+            | "Clean non zero rows" >> beam.Filter(drop_nonzerocols)
+            | "Create unique ID" >> beam.Map(create_hash)
+    )
 
 # ------------------------------------------------------------------------------
 
@@ -409,6 +451,7 @@ def run(known_args, pipeline_args, save_main_session):
             lines
                 | 'Parse and Validate Geometry' >> ParseAndValidateGeometry()
                 | 'Parse and Validate Datetime' >> ParseAndValidateDatetime()
+                | 'Parse and Validate Numbers' >> ParseAndValidateNumbers()
                 # | "Write ROW to GCP BQ" >> WriteToBigQuery(
                 #         output_path,
                 #         schema={'fields': META['staging']['bq_schema']},
