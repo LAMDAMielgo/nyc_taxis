@@ -94,7 +94,7 @@ META={
     "staging" : {
         "delimiter" : "|",
         "type"      : "str",
-        "bq_schema" : [
+        "bq_schema_pickup" : [
             {"name": "VendorID",                "type": "STRING"},
             {"name": "RateCodeID",              "type": "STRING"},
             {"name": "store_and_fwd_flag",      "type": "STRING"},

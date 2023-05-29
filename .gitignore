@@ -130,3 +130,4 @@ dmypy.json
 
 # data raw
 data/
+yellow_tripdata/
