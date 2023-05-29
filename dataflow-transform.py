@@ -17,7 +17,7 @@ from datetime   import datetime
 from typing     import List
 from logging    import getLogger, INFO
 from typing     import List, Dict, Iterable
-from pyarrow    import schema
+from pyarrow    import schema, string
 from pprint     import pprint
 
 import apache_beam as beam
@@ -61,7 +61,7 @@ META={
             "2" : "VeriFone Inc."
         },
         "store_and_fwd_flag": {
-            "Y" : True, "N": False
+            "Y" : "1", "N": "0"
         }
     },
     "raw" : {
@@ -318,12 +318,12 @@ def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
 
     def map_key(_key):
         def wrap(row):
-            row.update({_key: KEYS[_key].get(row[_key], '-9999')})
+            row.update({_key: KEYS[_key].get(row[_key], '99999')})
             return row
         return wrap
     
     def eval_nums(row):
-        row.update({k: round(literal_eval(row[k]),3) for k in num_cols})
+        row.update({k: round(float(row[k]),3) for k in num_cols})
         return row
 
 
@@ -337,7 +337,7 @@ def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
         row['id'] = "{centroid_x}_{centroid_y}_{mult}".format(
             centroid_x=str(row.pop('centroid_latitude')).replace('.', '')[2:6],
             centroid_y=str(row.pop('centroid_longitude')).replace('.', '')[2:6],
-            mult=str(row['trip_distance']*row['extra']+row['tip_amount'])[:4]
+            mult=str(row['trip_distance']+row['extra']+row['tip_amount']).replace('.', '')[:4]
         )
         return row
 
@@ -347,8 +347,8 @@ def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
             | "Map RateCodeID values" >> beam.Map(map_key('RateCodeID'))
             | "Map VendorID values" >> beam.Map(map_key('VendorID'))
             | "Map store_and_fwd_flag values" >> beam.Map(map_key('store_and_fwd_flag'))
-            | "Parse numeric columns" >> beam.Map(eval_nums)
-            | "Clean non zero rows" >> beam.Filter(drop_nonzerocols)
+            # | "Parse numeric columns" >> beam.Map(eval_nums)
+            # | "Clean non zero rows" >> beam.Filter(drop_nonzerocols)
             | "Create unique ID" >> beam.Map(create_hash)
     )
 
@@ -432,17 +432,23 @@ def run(known_args, pipeline_args, save_main_session):
         ) # list of string blob patterns to processs
 
         output_path = known_args.output.format(date=known_args.date)
+        _schema = [(col, string()) for col in list(META['raw']['schema'])]
 
         lines_parsed = (
             lines
                 | 'Parse and Validate Geometry' >> ParseAndValidateGeometry()
                 | 'Parse and Validate Datetime' >> ParseAndValidateDatetime()
                 | 'Parse and Validate Numbers' >> ParseAndValidateNumbers()
-                | 'Write to GS in JSON' >> beam.io.WriteToText(
-                        file_path_prefix=output_path, 
-                        file_name_suffix='.json', 
-                        shard_name_template=''
-                    )
+                # | 'Write to GS in JSON' >> beam.io.WriteToText(
+                #         file_path_prefix=output_path, 
+                #         file_name_suffix='.json', 
+                #         shard_name_template=''
+                #     )
+                | 'Write to gs as parquet' >> beam.io.WriteToParquet(
+                    file_path_prefix=known_args.output,
+                    schema=schema(_schema),
+                    file_name_suffix='.parquet'
+                )
         )
 
 
