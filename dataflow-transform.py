@@ -81,13 +81,13 @@ META={
             "dropoff_longitude"     : { "dtype": pyarrow.float64(), "comment" : ""},
             "dropoff_latitude"      : { "dtype": pyarrow.float64(), "comment" : ""},   
             "payment_type"          : { "dtype": pyarrow.string(),  "comment" : ""},         
-            "fare_amount"           : { "dtype": pyarrow.float32(), "comment" : "usd/fare"},
-            "extra"                 : { "dtype": pyarrow.float32(), "comment" : "usd"},
-            "mta_tax"               : { "dtype": pyarrow.float32(), "comment" : "usd, cte"},
-            "tip_amount"            : { "dtype": pyarrow.float32(), "comment" : "usd"},
-            "tolls_amount"          : { "dtype": pyarrow.float32(), "comment" : "usd"},
-            "improvement_surcharge" : { "dtype": pyarrow.float32(), "comment" : "usd"},
-            "total_amount"          : { "dtype": pyarrow.float32(), "comment" : "usd"},
+            "fare_amount"           : { "dtype": pyarrow.float16(), "comment" : "usd/fare"},
+            "extra"                 : { "dtype": pyarrow.float16(), "comment" : "usd"},
+            "mta_tax"               : { "dtype": pyarrow.float16(), "comment" : "usd, cte"},
+            "tip_amount"            : { "dtype": pyarrow.float16(), "comment" : "usd"},
+            "tolls_amount"          : { "dtype": pyarrow.float16(), "comment" : "usd"},
+            "improvement_surcharge" : { "dtype": pyarrow.float16(), "comment" : "usd"},
+            "total_amount"          : { "dtype": pyarrow.float16(), "comment" : "usd"},
             "pickup_geom"           : { "dtype": pyarrow.string(),  "comment" : ""},
             "dropoff_geom"          : { "dtype": pyarrow.string(),  "comment" : ""},
             "id"                    : { "dtype": pyarrow.string(),  "comment" : ""}
@@ -271,7 +271,7 @@ def ParseAndValidateDatetime(pcol:PCollection) -> PCollection[Dict[str,str]]:
 def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
     
     from ast import literal_eval
-    from numpy import logical_or, logical_and
+    from numpy import logical_or, logical_and, round
     KEYS = META['key']
 
     HEADER = list(META['raw']['schema'])
@@ -288,11 +288,6 @@ def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
             _ not in ids_cols
         ])
     ]
-    nonnull_cols = [_ for _ in num_cols if logical_or.reduce([
-            _.endswith('count'), 
-            _.endswith('distance')
-        ])
-    ]
 
     def map_key(_key):
         def wrap(row):
@@ -302,17 +297,11 @@ def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
     
     def eval_nums(row):
         for c in num_cols:
-            try:
-                row[c] = round(float(row[c]), 3)
-            except:
-                row[c] = 0
+                try:
+                    row[c] = literal_eval(row[c])
+                except:
+                    row[c] = 0  # there are nums like 0.5.1
         return row
-
-    def drop_nonzerocols(row):
-        if any(row[k] <= 0.01 for k in nonnull_cols):
-            return False
-        else:
-            return True
 
     def create_hash(row):
         row['id'] = "{centroid_x}_{centroid_y}_{mult}".format(
@@ -331,7 +320,6 @@ def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
             | "Map VendorID values" >> beam.Map(map_key('VendorID'))
             | "Map store_and_fwd_flag values" >> beam.Map(map_key('store_and_fwd_flag'))
             | "Parse numeric columns" >> beam.Map(eval_nums)
-            # | "Clean non zero rows" >> beam.Filter(drop_nonzerocols)
             | "Create unique ID" >> beam.Map(create_hash)
     )
 
@@ -366,7 +354,7 @@ def get_parser():
     parser.add_argument(
         "--date",
         help = 'YYYY-MM strings with the monthly data to process joined by pipe "|"',
-        default = '2015-01', type=str
+        default = '2015-07', type=str
     )
 
     # GOOGLE CLOUD PLATFORM ARGUMENTS
