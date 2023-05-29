@@ -202,8 +202,11 @@ def ParseAndValidateGeometry(pcol:PCollection) -> PCollection[Dict[str, str]]:
         of about 3m: 
             1 arc hour ; {"archour": 1,"arcmin" : 900, "arcsecond" : 54000}
         """
-        for col in geom_cols:                
-            row[col] = round(float(row[col]), 7)        
+        for col in geom_cols:
+            try:
+                row[col] = round(float(row[col]), 7)        
+            except:
+                row[col] = 0
         return row
     
     def drop_zeros(_type):
@@ -299,9 +302,9 @@ def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
     
     def eval_nums(row):
         for c in num_cols:
-            if isinstance(row[c], float):
-                row[c] = round(float(row[c]),3)
-            else:
+            try:
+                row[c] = round(float(row[c]), 3)
+            except:
                 row[c] = 0
         return row
 
@@ -433,13 +436,8 @@ def run(known_args, pipeline_args, save_main_session):
                 | 'Parse and Validate Geometry' >> ParseAndValidateGeometry()
                 | 'Parse and Validate Datetime' >> ParseAndValidateDatetime()
                 | 'Parse and Validate Numbers' >> ParseAndValidateNumbers()
-                # | 'Write to GS in JSON' >> beam.io.WriteToText(
-                #         file_path_prefix=output_path, 
-                #         file_name_suffix='.json', 
-                #         shard_name_template=''
-                #     )
                 | 'Write to gs as parquet' >> beam.io.WriteToParquet(
-                    file_path_prefix=known_args.output,
+                    file_path_prefix=output_path,
                     schema=schema(_schema),
                     file_name_suffix='.parquet'
                 )
