@@ -41,7 +41,6 @@ META={
     "head"      : "File for configuration for ETL",
     "source_name" : "yellow_tripdata",
     "staging_cols" : [
-            'id',
             "VendorID",
             "tpep_pickup_datetime",
             "tpep_dropoff_datetime",
@@ -49,12 +48,10 @@ META={
             "trip_distance",
             "pickup_longitude" ,
             "pickup_latitude",
-            "pickup_geom",
             "RateCodeID",
             "store_and_fwd_flag",
             "dropoff_longitude",
-            "dropoff_latitude",
-            "dropoff_geom",
+            "dropoff_latitude",            
             "payment_type",
             "fare_amount",
             "extra",
@@ -63,6 +60,9 @@ META={
             "tolls_amount" ,
             "improvement_surcharge",
             "total_amount"
+            "pickup_geom",
+            "dropoff_geom",
+            'id',
         ],
     "bq_schema" : {
         "pickup" : [
@@ -77,8 +77,8 @@ META={
             {"name": "RateCodeID",              "type": "STRING"},
             {"name": "store_and_fwd_flag",      "type": "STRING"},
             {"name": "payment_type",            "type": "STRING"},
-            {"name": "tpep_pickup_datetime",    "type": "TIMESTAMP"},
-            {"name": "tpep_dropoff_datetime",   "type": "TIMESTAMP"},
+            {"name": "tpep_pickup_datetime",    "type": "STRING"},
+            {"name": "tpep_dropoff_datetime",   "type": "STRING"},
             {"name": "passenger_count",         "type": "FLOAT"},
             {"name": "trip_distance",           "type": "FLOAT"},
             {"name": "fare_amount",             "type": "FLOAT"},
@@ -121,7 +121,7 @@ def get_parser():
     parser.add_argument(
         "--date",
         help = 'YYYY-MM strings with the monthly data to process joined by pipe "|"',
-        default = '2015-01', type=str
+        default = '2015-07', type=str
     )
 
     # GOOGLE CLOUD PLATFORM ARGUMENTS
@@ -178,7 +178,7 @@ def run(known_args, pipeline_args, save_main_session):
 
         rows = (
             extract_p 
-            | "Load json" >> beam.io.ReadFromParquet(
+            | "Load parquet" >> beam.io.ReadFromParquet(
                     file_pattern=known_args.input.format(date=known_args.date),
                     columns=columns
                 )
@@ -196,7 +196,8 @@ def run(known_args, pipeline_args, save_main_session):
                         create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
                         # Deletes all data in the BigQuery table before writing.
                         write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
-                        ignore_unknown_columns=True
+                        ignore_unknown_columns=True,
+                        additional_bq_parameters={'maxBadRecords': 10000}
                     )
         )
 
@@ -212,7 +213,8 @@ def run(known_args, pipeline_args, save_main_session):
                         create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
                         # Deletes all data in the BigQuery table before writing.
                         write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
-                        ignore_unknown_columns=True
+                        ignore_unknown_columns=True,
+                        additional_bq_parameters={'maxBadRecords': 10000}
                     )
         )
 
@@ -228,7 +230,8 @@ def run(known_args, pipeline_args, save_main_session):
                         create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
                         # Deletes all data in the BigQuery table before writing.
                         write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
-                        ignore_unknown_columns=True
+                        ignore_unknown_columns=True,
+                        additional_bq_parameters={'maxBadRecords': 10000}
                     )
         )
 
