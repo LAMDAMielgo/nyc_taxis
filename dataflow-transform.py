@@ -24,7 +24,6 @@ import apache_beam as beam
 
 from apache_beam        import PCollection
 from apache_beam.pvalue import PBegin
-from apache_beam.io     import WriteToBigQuery
 
 from apache_beam.options.pipeline_options import PipelineOptions as POpts
 from apache_beam.options.pipeline_options import SetupOptions    as SOpts
@@ -171,7 +170,6 @@ def ReadCSVLines(pbegin:PBegin, fpattern:str) -> List[str]:
                 ):
                 yield row
 
-    print(fpattern)
     return (
         pbegin 
             | beam.Create([fpattern])
@@ -182,6 +180,7 @@ def ReadCSVLines(pbegin:PBegin, fpattern:str) -> List[str]:
 # ------------------------------------------------------------------------------
 
 @beam.ptransform_fn
+@beam.typehints.with_input_types(PCollection[Dict[str, str]])
 @beam.typehints.with_output_types(PCollection[Dict[str, str]])
 def ParseAndValidateGeometry(pcol:PCollection) -> PCollection[Dict[str, str]]:
     """ Basic transformation from raw data: Not store data we cannot do basic
@@ -253,10 +252,8 @@ def ParseAndValidateGeometry(pcol:PCollection) -> PCollection[Dict[str, str]]:
             | beam.Map(lambda row: {k: str(row[k]) for k in row})
     )
 
-
 @beam.ptransform_fn
-@beam.typehints.with_input_types(PCollection)
-@beam.typehints.with_output_types(Dict[str,str])
+@beam.typehints.with_output_types(PCollection[Dict[str, str]])
 def ParseAndValidateDatetime(pcol:PCollection) -> PCollection[Dict[str,str]]:
     """ Basic transformation from raw data: Not store data we cannot do basic
     analytics over it.
@@ -307,7 +304,7 @@ def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
             _.endswith('flag')
         ])
     ]
-    num_cols = [_ for _ in HEADER if logical_or.reduce([
+    num_cols = [_ for _ in HEADER if logical_and.reduce([
             not _.endswith('itude'),
             not _.endswith('datetime'),
             _ not in ids_cols
@@ -321,13 +318,14 @@ def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
 
     def map_key(_key):
         def wrap(row):
-            row.update({_key: KEYS[_key][row[_key]]})
+            row.update({_key: KEYS[_key].get(row[_key], '-9999')})
             return row
         return wrap
     
     def eval_nums(row):
         row.update({k: round(literal_eval(row[k]),3) for k in num_cols})
         return row
+
 
     def drop_nonzerocols(row):
         if any(row[k] <= 0.01 for k in nonnull_cols):
@@ -337,36 +335,24 @@ def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
 
     def create_hash(row):
         row['id'] = "{centroid_x}_{centroid_y}_{mult}".format(
-            centroid_x=str(row.pop('centroid_latitude')).replace('.', ''),
-            centroid_y=str(row.pop('centroid_longitude')).replace('.', ''),
+            centroid_x=str(row.pop('centroid_latitude')).replace('.', '')[2:6],
+            centroid_y=str(row.pop('centroid_longitude')).replace('.', '')[2:6],
             mult=str(row['trip_distance']*row['extra']+row['tip_amount'])[:4]
         )
         return row
 
-
-    for k in ids_cols:
-        ( pcol | f"Map {k} values" >> beam.Map(map_key(k)))
-
     return ( 
         pcol 
+            | "Map payment_type values" >> beam.Map(map_key('payment_type'))
+            | "Map RateCodeID values" >> beam.Map(map_key('RateCodeID'))
+            | "Map VendorID values" >> beam.Map(map_key('VendorID'))
+            | "Map store_and_fwd_flag values" >> beam.Map(map_key('store_and_fwd_flag'))
             | "Parse numeric columns" >> beam.Map(eval_nums)
             | "Clean non zero rows" >> beam.Filter(drop_nonzerocols)
             | "Create unique ID" >> beam.Map(create_hash)
     )
 
 # ------------------------------------------------------------------------------
-
-def get_all_files_from_bucket(project, globpath):
-    """ Through the gs client, retrieves the names of all the files to process
-    """
-
-    with storage.Client() as client:
-        for blob in client.list_blobs(
-            project, 
-            prefix=globpath.split(project)[-1][1:]
-        ):
-            yield blob
-
 
 def get_parser():
     """ Definition of pipeline arguments to pass at terminal. There are two 
@@ -393,7 +379,7 @@ def get_parser():
     parser.add_argument('--region', required=True, help='Specify Google Cloud region')
     parser.add_argument('--runner',required=True,  help='Specify Google Cloud runner')
     parser.add_argument('--setup_file', help='Path to setup.py')
-    parser.add_argument('--num_workers', required=True, help='Num of CE instances')
+    parser.add_argument('--num_workers',default=1, help='Num of CE instances')
 
     # CUSTOM APACHE BEAM WITH FILES
     #parser.add_argument(
@@ -452,19 +438,11 @@ def run(known_args, pipeline_args, save_main_session):
                 | 'Parse and Validate Geometry' >> ParseAndValidateGeometry()
                 | 'Parse and Validate Datetime' >> ParseAndValidateDatetime()
                 | 'Parse and Validate Numbers' >> ParseAndValidateNumbers()
-                # | "Write ROW to GCP BQ" >> WriteToBigQuery(
-                #         output_path,
-                #         schema={'fields': META['staging']['bq_schema']},
-                #         # Creates the table in BigQuery if it does not yet exist.
-                #         create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
-                #         # Deletes all data in the BigQuery table before writing.
-                #         write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
-                #         ignore_unknown_columns=True
-                #     )
-                | beam.Map(lambda row: json.dumps(row))
                 | 'Write to GS in JSON' >> beam.io.WriteToText(
-                    output_path, '.json'
-                )
+                        file_path_prefix=output_path, 
+                        file_name_suffix='.json', 
+                        shard_name_template=''
+                    )
         )
 
 
