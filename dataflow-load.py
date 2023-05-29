@@ -40,6 +40,30 @@ from google.cloud import storage
 META={
     "head"      : "File for configuration for ETL",
     "source_name" : "yellow_tripdata",
+    "staging_cols" : [
+            'id',
+            "VendorID",
+            "tpep_pickup_datetime",
+            "tpep_dropoff_datetime",
+            "passenger_count",
+            "trip_distance",
+            "pickup_longitude" ,
+            "pickup_latitude",
+            "pickup_geom",
+            "RateCodeID",
+            "store_and_fwd_flag",
+            "dropoff_longitude",
+            "dropoff_latitude",
+            "dropoff_geom",
+            "payment_type",
+            "fare_amount",
+            "extra",
+            "mta_tax",
+            "tip_amount",
+            "tolls_amount" ,
+            "improvement_surcharge",
+            "total_amount"
+        ],
     "bq_schema" : {
         "pickup" : [
             {'name': "id",                      "type": "STRING"},
@@ -141,7 +165,6 @@ def get_beam_option(known_args, pipeline_args, save_main_session):
 def run(known_args, pipeline_args, save_main_session):
     """
     """
-
     pipeline_options = get_beam_option(
         known_args=known_args, 
         pipeline_args=pipeline_args, 
@@ -150,15 +173,16 @@ def run(known_args, pipeline_args, save_main_session):
 
     with beam.Pipeline(options=pipeline_options) as extract_p:
 
+        tables = META['bq_schema']
+        columns = META['staging_cols']
+
         rows = (
             extract_p 
-            | "Load json" >> beam.io.ReadFromText(
-                    file_pattern=known_args.input.format(date=known_args.date)
+            | "Load json" >> beam.io.ReadFromParquet(
+                    file_pattern=known_args.input.format(date=known_args.date),
+                    columns=columns
                 )
         ) # list of string blob patterns to processs
-
-        tables = META['bq_schema']
-
 
         table_name = 'pickup'
         table_keys = list(map(lambda d:d['name'], tables[table_name]))
@@ -175,7 +199,6 @@ def run(known_args, pipeline_args, save_main_session):
                         ignore_unknown_columns=True
                     )
         )
-
 
         table_name = 'tripdata'
         table_keys = list(map(lambda d:d['name'], tables[table_name]))
