@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import time
 import json
+import pyarrow
 
 from argparse   import ArgumentParser
 from datetime   import datetime
@@ -61,61 +62,37 @@ META={
             "2" : "VeriFone Inc."
         },
         "store_and_fwd_flag": {
-            "Y" : "1", "N": "0"
+            "Y" : 1, "N": 0
         }
     },
     "raw" : {
         "encoding"  : "utf-8",
         "delimiter" : "\t",
         "schema"    : {
-            "VendorID"              : { "dtype": "int",       "comment" : "TPEP Provider"},  
-            "tpep_pickup_datetime"  : { "dtype": "datetime",  "comment" : ""},
-            "tpep_dropoff_datetime" : { "dtype": "datetime",  "comment" : ""},
-            "passenger_count"       : { "dtype": "int",       "comment" : "Num passenger per ride"},
-            "trip_distance"         : { "dtype": "float",     "comment" : "miles, by taximeter"},
-            "pickup_longitude"      : { "dtype": "float",     "comment" : "x geom"},
-            "pickup_latitude"       : { "dtype": "float",     "comment" : "y geom"},
-            "RateCodeID"            : { "dtype": "int",       "comment" : "usd/meter applied"},
-            "store_and_fwd_flag"    : { "dtype": "bool",      "comment" : "type of data processing from device"},
-            "dropoff_longitude"     : { "dtype": "float",     "comment" : ""},
-            "dropoff_latitude"      : { "dtype": "float",     "comment" : ""},
-            "payment_type"          : { "dtype": "int",       "comment" : ""},
-            "fare_amount"           : { "dtype": "float",     "comment" : "usd/fare"},
-            "extra"                 : { "dtype": "float",     "comment" : "usd"},
-            "mta_tax"               : { "dtype": "float",     "comment" : "usd, cte"},
-            "tip_amount"            : { "dtype": "float",     "comment" : "usd"},
-            "tolls_amount"          : { "dtype": "float",     "comment" : "usd"},
-            "improvement_surcharge" : { "dtype": "float",     "comment" : "usd"},
-            "total_amount"          : { "dtype": "float",     "comment" : "usd"}
-        },
+            "VendorID"              : { "dtype": pyarrow.string(),  "comment" : "TPEP Provider"},            
+            "tpep_pickup_datetime"  : { "dtype": pyarrow.string(),  "comment" : ""},
+            "tpep_dropoff_datetime" : { "dtype": pyarrow.string(),  "comment" : ""},            
+            "passenger_count"       : { "dtype": pyarrow.int32(),   "comment" : "Num passenger per ride"},            
+            "trip_distance"         : { "dtype": pyarrow.float32(), "comment" : "miles, by taximeter"},
+            "pickup_longitude"      : { "dtype": pyarrow.float64(), "comment" : "x geom"},
+            "pickup_latitude"       : { "dtype": pyarrow.float64(), "comment" : "y geom"},
+            "RateCodeID"            : { "dtype": pyarrow.string(),  "comment" : "usd/meter applied"},
+            "store_and_fwd_flag"    : { "dtype": pyarrow.int16(),   "comment" : "type of data processing from device"},
+            "dropoff_longitude"     : { "dtype": pyarrow.float64(), "comment" : ""},
+            "dropoff_latitude"      : { "dtype": pyarrow.float64(), "comment" : ""},   
+            "payment_type"          : { "dtype": pyarrow.string(),  "comment" : ""},         
+            "fare_amount"           : { "dtype": pyarrow.float32(), "comment" : "usd/fare"},
+            "extra"                 : { "dtype": pyarrow.float32(), "comment" : "usd"},
+            "mta_tax"               : { "dtype": pyarrow.float32(), "comment" : "usd, cte"},
+            "tip_amount"            : { "dtype": pyarrow.float32(), "comment" : "usd"},
+            "tolls_amount"          : { "dtype": pyarrow.float32(), "comment" : "usd"},
+            "improvement_surcharge" : { "dtype": pyarrow.float32(), "comment" : "usd"},
+            "total_amount"          : { "dtype": pyarrow.float32(), "comment" : "usd"},
+            "pickup_geom"           : { "dtype": pyarrow.string(),  "comment" : ""},
+            "dropoff_geom"          : { "dtype": pyarrow.string(),  "comment" : ""},
+            "id"                    : { "dtype": pyarrow.string(),  "comment" : ""}
+        },  # NOTE: In its original order (dict is ordered in dataflow)
        "dateformat" : "%Y-%m-%d %H:%M:%S"
-    },
-    "staging" : {
-        "delimiter" : "|",
-        "type"      : "str",
-        "bq_schema" : [
-            {"name": "VendorID",                "type": "STRING"},
-            {"name": "RateCodeID",              "type": "STRING"},
-            {"name": "store_and_fwd_flag",      "type": "STRING"},
-            {"name": "tpep_pickup_datetime",    "type": "STRING"},
-            {"name": "tpep_dropoff_datetime",   "type": "STRING"},
-            {"name": "payment_type",        "type": "STRING"},
-            {"name": "passenger_count",     "type": "FLOAT"},
-            {"name": "trip_distance",       "type": "FLOAT"},            
-            {"name": "fare_amount",         "type": "FLOAT"},
-            {"name": "extra",               "type": "FLOAT"},
-            {"name": "mta_tax",             "type": "FLOAT"},
-            {"name": "tip_amount",          "type": "FLOAT"},
-            {"name": "tolls_amount",            "type": "FLOAT"},
-            {"name": "improvement_surcharge",   "type": "FLOAT"},
-            {"name": "total_amount",         "type": "FLOAT"},
-            {"name": "pickup_longitude",    "type": "FLOAT"},
-            {"name": "pickup_latitude",     "type": "FLOAT"},
-            {"name": "pickup_geom",         "type": "GEOGRAPHY"},
-            {"name": "dropoff_longitude",   "type": "FLOAT"},
-            {"name": "dropoff_latitude",    "type": "FLOAT"},
-            {"name": "dropoff_geom",        "type": "GEOGRAPHY"},
-        ]
     }
 }
 
@@ -149,7 +126,7 @@ def ReadCSVLines(pbegin:PBegin, fpattern:str) -> List[str]:
     from datetime        import datetime
     from apache_beam.io.filesystems import FileSystems
 
-    HEADER = list(META['raw']['schema'].keys())
+    HEADER = list(META['raw']['schema'].keys())[:-3]
     ENCODING = META['raw']['encoding']
     DELIMITER = META['raw']['delimiter']
 
@@ -225,31 +202,27 @@ def ParseAndValidateGeometry(pcol:PCollection) -> PCollection[Dict[str, str]]:
         of about 3m: 
             1 arc hour ; {"archour": 1,"arcmin" : 900, "arcsecond" : 54000}
         """
-        _round = lambda i, p: round(float(i), p)
-        try: 
-            for col in geom_cols:
-                row[col] = _round(row[col], 7)
-            return row
-        
-        except Exception as e:
-            for col in geom_cols:
-                row[col] = 0
-            return row  #NOTE: If exception then geometry is casted as zero
+        for col in geom_cols:                
+            row[col] = round(float(row[col]), 7)        
+        return row
     
-    def drop_notNumeric_values(row):
-        try:
-            return any(abs(float(row[k])) != 0 for k in geom_cols)        
-        except ValueError as e:
-            return False
+    def drop_zeros(_type):
+        def wrap(row):
+            _geom = [_ for _ in geom_cols if _.startswith(_type)]
+            try: 
+                return any(abs(float(row[k])) != 0 for k in _geom)        
+            except ValueError as e:
+                return False
+        return wrap
         
     return (
         pcol
             | "Parse coords to float" >> beam.Map(parse_coords)
-            | 'Drop zero geom rows' >> beam.Filter(drop_notNumeric_values)
+            | 'Drop zero lat rows' >> beam.Filter(drop_zeros('pickup'))
+            | 'Drop zero lng rows' >> beam.Filter(drop_zeros('dropoff'))
             | "Create WKT for pickup" >> beam.Map(create_WKTPoints('pickup'))
             | "Create WKT for dropoff" >> beam.Map(create_WKTPoints('dropoff'))
             | "Create centroid" >> beam.Map(create_centroid)
-            | beam.Map(lambda row: {k: str(row[k]) for k in row})
     )
 
 @beam.ptransform_fn
@@ -301,12 +274,14 @@ def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
     HEADER = list(META['raw']['schema'])
     ids_cols = [_ for _ in HEADER if logical_or.reduce([
             _.lower().endswith('id'), 
-            _.endswith('flag')
+            _.endswith('flag'),
+            _.endswith('type')
         ])
     ]
     num_cols = [_ for _ in HEADER if logical_and.reduce([
             not _.endswith('itude'),
             not _.endswith('datetime'),
+            not _.endswith('geom'),
             _ not in ids_cols
         ])
     ]
@@ -318,14 +293,17 @@ def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
 
     def map_key(_key):
         def wrap(row):
-            row.update({_key: KEYS[_key].get(row[_key], '99999')})
+            row.update({_key: KEYS[_key].get(row[_key], ':')})
             return row
         return wrap
     
     def eval_nums(row):
-        row.update({k: round(float(row[k]),3) for k in num_cols})
+        for c in num_cols:
+            if isinstance(row[c], float):
+                row[c] = round(float(row[c]),3)
+            else:
+                row[c] = 0
         return row
-
 
     def drop_nonzerocols(row):
         if any(row[k] <= 0.01 for k in nonnull_cols):
@@ -335,19 +313,21 @@ def ParseAndValidateNumbers(pcol:PCollection) -> PCollection[Dict[str,str]]:
 
     def create_hash(row):
         row['id'] = "{centroid_x}_{centroid_y}_{mult}".format(
-            centroid_x=str(row.pop('centroid_latitude')).replace('.', '')[2:6],
-            centroid_y=str(row.pop('centroid_longitude')).replace('.', '')[2:6],
-            mult=str(row['trip_distance']+row['extra']+row['tip_amount']).replace('.', '')[:4]
+            centroid_x=str(row.pop('centroid_latitude')).replace('.', '')[:6],
+            centroid_y=str(row.pop('centroid_longitude')).replace('.', '')[:6],
+            mult="".join(
+                    map(str, (row['trip_distance'], row['extra'], row['tip_amount']))
+                ).replace('.', '')[:6]
         )
         return row
-
+    
     return ( 
         pcol 
             | "Map payment_type values" >> beam.Map(map_key('payment_type'))
             | "Map RateCodeID values" >> beam.Map(map_key('RateCodeID'))
             | "Map VendorID values" >> beam.Map(map_key('VendorID'))
             | "Map store_and_fwd_flag values" >> beam.Map(map_key('store_and_fwd_flag'))
-            # | "Parse numeric columns" >> beam.Map(eval_nums)
+            | "Parse numeric columns" >> beam.Map(eval_nums)
             # | "Clean non zero rows" >> beam.Filter(drop_nonzerocols)
             | "Create unique ID" >> beam.Map(create_hash)
     )
@@ -361,12 +341,24 @@ def get_parser():
 
     # FILES AND FILTER BY DATES
     parser.add_argument(
-        '--input', required=True, help='Input bucket storage as glob pattern'
-    ) #'gs://${PROJECT}/raw/${DATASETNAME}_{date}*.csv'
+        '--input', help='Input bucket storage as glob pattern',
+        required=True,
+        # default = "gs://${PROJECT}/${DATASETNAME}/${DATASETNAME}_{date}_10*.csv".format(
+        #     PROJECT='graphite-bliss-388109',
+        #     DATASETNAME='yellow_tripdata',
+        #     date='2015-10'
+        # ) # for local debug
+    )
 
     parser.add_argument(
-        '--output', required=True, help='Output file to process'
-    ) # gs://${PROJECT}/dataflow/${DATASETNAME}_{date}
+        '--output', help='Output file to process',
+        required=True,
+        # default = 'gs://${PROJECT}/dataflow/${DATASETNAME}_{date}'.format(
+        #     PROJECT='graphite-bliss-388109',
+        #     DATASETNAME='yellow_tripdata',
+        #     date='2015-10'
+        # ) # for local debug
+    )
 
     parser.add_argument(
         "--date",
@@ -432,7 +424,9 @@ def run(known_args, pipeline_args, save_main_session):
         ) # list of string blob patterns to processs
 
         output_path = known_args.output.format(date=known_args.date)
-        _schema = [(col, string()) for col in list(META['raw']['schema'])]
+        _schema = [
+            (col, META['raw']['schema'][col]['dtype']) for col in list(META['raw']['schema'])
+        ]
 
         lines_parsed = (
             lines
