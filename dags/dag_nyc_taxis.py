@@ -120,18 +120,22 @@ def main_dag(
                 filename, _ = os.path.splitext(f)
                 _f.append(filename)
 
-            ti.xcom_pusk(key='filesnames', value=_f)
+            ti.xcom_push(key='filesnames', value=_f)
 
         def iter_through_files(ti):
             """Launches a new dag for each fil
             """
 
+            iter_start = EmptyOperator(task_id="dag_start")        
+            iter_end = EmptyOperator(task_id="dag_end")
+            _iter_report = EmptyOperator(task_id="generate_report")
+                
             for filename in ti.xcom_pull(key='filesnames'):
 
                 source_uri = DAG_PARAMS['raw_path']+filename+'*.csv'
                 filepath_at_raw = DAG_PARAMS['raw_path']+filename+'*.csv'
                 filepath_at_staging = DAG_PARAMS['staging_path']+filename+'*.parquet'
-                bq_tmp_table = DAG_PARAMS['bq_temp']+filename
+                bq_tmp_table = DAG_PARAMS['bq_ds_temp']+filename
 
                 _DF_OPJOB = {
                     "project_id": DAG_PARAMS["PROJECT"], 
@@ -192,7 +196,9 @@ def main_dag(
                 )
 
 
-                dag_start >> transform >> _report
+                iter_start >> dag_start >> transform >> _report
+            
+            _report >> iter_end
 
         # --------------------------------------------------------------------------  
 
@@ -222,7 +228,7 @@ def main_dag(
         # --------------------------------------------------------------------------  
 
         dag_start >> create_temp_monthly_dataset    >> _report >> dag_end
-        dag_start >> [fetch_files >> iter_dataflow] >> _report >> dag_end
+        dag_start >> fetch_files >> iter_dataflow   >> _report >> dag_end
 
         
     # --------------------------------------------------------------------------
