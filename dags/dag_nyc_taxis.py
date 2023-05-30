@@ -50,7 +50,6 @@ bq_datasets = {
 }
 
 
-
 DAG_PARAMS={
     'source_uri'    : "gs://data_eng_test/",
     'raw_path'      : 'gs://{project}/{dataset}/{date}/',
