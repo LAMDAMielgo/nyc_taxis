@@ -59,40 +59,34 @@ META={
             "tip_amount",
             "tolls_amount" ,
             "improvement_surcharge",
-            "total_amount"
+            "total_amount",
             "pickup_geom",
             "dropoff_geom",
             'id',
         ],
     "bq_schema" : {
-        "pickup" : [
-            {'name': "id",                      "type": "STRING"},
-            {"name": "pickup_longitude",    "type": "FLOAT"},
-            {"name": "pickup_latitude",     "type": "FLOAT"},
-            {"name": "pickup_geom",         "type": "GEOGRAPHY"}
-        ],
         "tripdata" : [
             {'name': "id",                      "type": "STRING"},
             {"name": "VendorID",                "type": "STRING"},
             {"name": "RateCodeID",              "type": "STRING"},
-            {"name": "store_and_fwd_flag",      "type": "STRING"},
+            {"name": "store_and_fwd_flag",      "type": "BOOL"},
             {"name": "payment_type",            "type": "STRING"},
             {"name": "tpep_pickup_datetime",    "type": "STRING"},
             {"name": "tpep_dropoff_datetime",   "type": "STRING"},
-            {"name": "passenger_count",         "type": "FLOAT"},
-            {"name": "trip_distance",           "type": "FLOAT"},
-            {"name": "fare_amount",             "type": "FLOAT"},
-            {"name": "extra",                   "type": "FLOAT"},
-            {"name": "mta_tax",                 "type": "FLOAT"},
-            {"name": "tip_amount",              "type": "FLOAT"},
-            {"name": "tolls_amount",            "type": "FLOAT"},
-            {"name": "improvement_surcharge",   "type": "FLOAT"},
-            {"name": "total_amount",            "type": "FLOAT"},
-        ],
-        'dropdown' : [
-            {'name': "id",                  "type": "STRING"},
-            {"name": "dropoff_longitude",   "type": "FLOAT"},
-            {"name": "dropoff_latitude",    "type": "FLOAT"},
+            {"name": "passenger_count",         "type": "FLOAT64"},
+            {"name": "trip_distance",           "type": "FLOAT64"},
+            {"name": "fare_amount",             "type": "FLOAT64"},
+            {"name": "extra",                   "type": "FLOAT64"},
+            {"name": "mta_tax",                 "type": "FLOAT64"},
+            {"name": "tip_amount",              "type": "FLOAT64"},
+            {"name": "tolls_amount",            "type": "FLOAT64"},
+            {"name": "improvement_surcharge",   "type": "FLOAT64"},
+            {"name": "total_amount",            "type": "FLOAT64"},
+            {"name": "pickup_longitude",    "type": "FLOAT64"},
+            {"name": "pickup_latitude",     "type": "FLOAT64"},
+            {"name": "pickup_geom",         "type": "GEOGRAPHY"},
+            {"name": "dropoff_longitude",   "type": "FLOAT64"},
+            {"name": "dropoff_latitude",    "type": "FLOAT64"},
             {"name": "dropoff_geom",        "type": "GEOGRAPHY"}
         ]
     }
@@ -103,6 +97,24 @@ NOW = datetime.utcnow()
 logger = getLogger(__name__)
 
 # ------------------------------------------------------------------------------
+
+def fill_nan(schema):
+    nan_dtype = {
+        'FLOAT64': 0,
+        'BOOL': False,
+        'STRING': ':',
+        "GEOGRAPHY": 'POINT(0 0)'
+    }
+
+    def wrap(row):
+        out = {}
+        for col in schema:
+            if col['name'] in row.keys():
+                out[col['name']] = row[col['name']]
+            else:
+                out[col['name']] = nan_dtype[col['type']]
+        return out
+    return wrap
 
 def get_parser():
     """ Definition of pipeline arguments to pass at terminal. There are two 
@@ -117,7 +129,11 @@ def get_parser():
     parser.add_argument(
         '--output', required=True, help='Output dataset to dump tables'
     ) # gs://${PROJECT}/dataflow/${DATASETNAME}_{date}
-
+    parser.add_argument(
+        "--bq_temp",
+        help="temp folder for json files when creating temp table",
+        default = "gs://${PROJECT}/bq_temp/"
+    )
     parser.add_argument(
         "--date",
         help = 'YYYY-MM strings with the monthly data to process joined by pipe "|"',
@@ -184,28 +200,10 @@ def run(known_args, pipeline_args, save_main_session):
                 )
         ) # list of string blob patterns to processs
 
-        table_name = 'pickup'
-        table_keys = list(map(lambda d:d['name'], tables[table_name]))
-        pickup_bq = (
-            rows
-                | "filter to pickup" >> beam.Map(lambda r: {k: r[k] for k in table_keys})
-                | "pickup data to bq" >> WriteToBigQuery(
-                        known_args.output+'.'+table_name,
-                        schema={'fields': tables[table_name]},
-                        # Creates the table in BigQuery if it does not yet exist.
-                        create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
-                        # Deletes all data in the BigQuery table before writing.
-                        write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
-                        ignore_unknown_columns=True,
-                        additional_bq_parameters={'maxBadRecords': 10000}
-                    )
-        )
-
         table_name = 'tripdata'
-        table_keys = list(map(lambda d:d['name'], tables[table_name]))
         tripdata_bq = (
             rows
-                | "filter to tripdata" >> beam.Map(lambda r: {k: r[k] for k in table_keys})
+                | "fillnan data" >> beam.Map(fill_nan(schema=tables[table_name]))
                 | "tripdata data to bq" >> WriteToBigQuery(
                         known_args.output+'.'+table_name,
                         schema={'fields': tables[table_name]},
@@ -213,28 +211,9 @@ def run(known_args, pipeline_args, save_main_session):
                         create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
                         # Deletes all data in the BigQuery table before writing.
                         write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
-                        ignore_unknown_columns=True,
-                        additional_bq_parameters={'maxBadRecords': 10000}
+                        custom_gcs_temp_location="gs://graphite-bliss-388109/tmp/bq"
                     )
         )
-
-        table_name = 'dropdown'
-        table_keys = list(map(lambda d:d['name'], tables[table_name]))
-        dropdown_bq = (
-            rows
-                | "filter to dropdown" >> beam.Map(lambda r: {k: r.get(k) for k in table_keys})
-                | "dropdown data to bq" >> WriteToBigQuery(
-                        known_args.output+'.'+table_name,
-                        schema={'fields': tables[table_name]},
-                        # Creates the table in BigQuery if it does not yet exist.
-                        create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
-                        # Deletes all data in the BigQuery table before writing.
-                        write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
-                        ignore_unknown_columns=True,
-                        additional_bq_parameters={'maxBadRecords': 10000}
-                    )
-        )
-
 
 
 def main(argv=None, save_main_session=False):
@@ -244,7 +223,6 @@ def main(argv=None, save_main_session=False):
 
     parser = get_parser()
     known_args, pipeline_args = parser.parse_known_args(argv)
-
 
     run(
         known_args=known_args, 
