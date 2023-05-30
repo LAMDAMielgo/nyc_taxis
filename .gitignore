@@ -132,3 +132,7 @@ dmypy.json
 data/
 yellow_tripdata/
 scraps/
+
+# local airflow
+airflow-install.share
+airflow.cgf
