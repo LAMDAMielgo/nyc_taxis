@@ -134,5 +134,5 @@ yellow_tripdata/
 scraps/
 
 # local airflow
-airflow-install.share
-airflow.cgf
+airflow-install.sh
+airflow.cfg
