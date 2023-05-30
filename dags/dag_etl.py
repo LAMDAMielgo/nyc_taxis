@@ -30,11 +30,12 @@ with DAG(
         "NOW"       :"2015-01"
         "PROJECT"   :"graphite-bliss-388109"
         "REGION"    :"europe-southwest1"
-        "bq_tmp_table":"yellow_tripdata_tmpyellow_tripdata_2015-01_01"
-        "filename":"yellow_tripdata_2015-01_01"
-        "filepath_at_raw":"gs://graphite-bliss-388109/yellow_tripdata/2015-01/yellow_tripdata_2015-01_01*.csv"
-        "filepath_at_staging":"gs://graphite-bliss-388109/dataflow/yellow_tripdata/yellow_tripdata_2015-01_01*.parquet"
-        "source_uri":"gs://graphite-bliss-388109/yellow_tripdata/2015-01/yellow_tripdata_2015-01_01*.csv"
+        "bq_tmp_table"  :"yellow_tripdata_tmpyellow_tripdata_2015-01_01"
+        "filename"      :"yellow_tripdata_2015-01_01"
+        "source_uri"            :"gs://data_eng_test/yellow_tripdata_2015-01_01.csv.zip"
+        "filepath_at_raw"       :"gs://graphite-bliss-388109/yellow_tripdata/2015-01/yellow_tripdata_2015-01_01*.csv"
+        "filepath_at_staging"   :"gs://graphite-bliss-388109/dataflow/yellow_tripdata/yellow_tripdata_2015-01_01*.parquet"
+        
     }
     """
 

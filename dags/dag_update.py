@@ -128,9 +128,9 @@ with DAG(
 
         for filename in filenames:
             
-            source_uri = DAG_PARAMS['raw_path']+filename+'*.csv'
-            filepath_at_raw = DAG_PARAMS['raw_path']+filename+'*.csv'
-            filepath_at_staging = DAG_PARAMS['staging_path']+filename+'*.parquet'
+            source_uri = DAG_PARAMS['source_uri']+filename+'.csv.zip'
+            filepath_at_raw = DAG_PARAMS['raw_path']+filename+'.csv'
+            filepath_at_staging = DAG_PARAMS['staging_path']+filename
             bq_tmp_table = DAG_PARAMS['bq_ds_temp']+filename
 
             build_dag_run_conf_and_trigger_dag_update = TriggerDagRunOperator(
