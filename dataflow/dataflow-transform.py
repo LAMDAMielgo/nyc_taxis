@@ -81,13 +81,13 @@ META={
             "dropoff_longitude"     : { "dtype": pyarrow.float64(), "comment" : ""},
             "dropoff_latitude"      : { "dtype": pyarrow.float64(), "comment" : ""},   
             "payment_type"          : { "dtype": pyarrow.string(),  "comment" : ""},         
-            "fare_amount"           : { "dtype": pyarrow.float16(), "comment" : "usd/fare"},
-            "extra"                 : { "dtype": pyarrow.float16(), "comment" : "usd"},
-            "mta_tax"               : { "dtype": pyarrow.float16(), "comment" : "usd, cte"},
-            "tip_amount"            : { "dtype": pyarrow.float16(), "comment" : "usd"},
-            "tolls_amount"          : { "dtype": pyarrow.float16(), "comment" : "usd"},
-            "improvement_surcharge" : { "dtype": pyarrow.float16(), "comment" : "usd"},
-            "total_amount"          : { "dtype": pyarrow.float16(), "comment" : "usd"},
+            "fare_amount"           : { "dtype": pyarrow.float32(), "comment" : "usd/fare"},
+            "extra"                 : { "dtype": pyarrow.float32(), "comment" : "usd"},
+            "mta_tax"               : { "dtype": pyarrow.float32(), "comment" : "usd, cte"},
+            "tip_amount"            : { "dtype": pyarrow.float32(), "comment" : "usd"},
+            "tolls_amount"          : { "dtype": pyarrow.float32(), "comment" : "usd"},
+            "improvement_surcharge" : { "dtype": pyarrow.float32(), "comment" : "usd"},
+            "total_amount"          : { "dtype": pyarrow.float32(), "comment" : "usd"},
             "pickup_geom"           : { "dtype": pyarrow.string(),  "comment" : ""},
             "dropoff_geom"          : { "dtype": pyarrow.string(),  "comment" : ""},
             "id"                    : { "dtype": pyarrow.string(),  "comment" : ""}
@@ -138,6 +138,7 @@ def ReadCSVLines(pbegin:PBegin, fpattern:str) -> List[str]:
 
     def read_csv_lines(fname:str) -> Iterable[Dict[str, str]]:
         with FileSystems.open(fname) as f:
+            print(fname)
             # Beam reads files as bytes, but csv expects strings,
             # so we need to decode the bytes into utf-8 strings.
             for row in csv.DictReader(
@@ -351,12 +352,6 @@ def get_parser():
         # ) # for local debug
     )
 
-    # parser.add_argument(
-    #     "--date",
-    #     help = 'YYYY-MM strings with the monthly data to process joined by pipe "|"',
-    #     default = '2015-07', type=str
-    # )
-
     # GOOGLE CLOUD PLATFORM ARGUMENTS
     parser.add_argument('--project',required=True, help='Specify Google Cloud project')
     parser.add_argument('--region', required=True, help='Specify Google Cloud region')
@@ -371,7 +366,7 @@ def get_beam_option(known_args, pipeline_args, save_main_session):
 
     _options.view_as(SOpts).save_main_session = save_main_session
     _options.view_as(StdOpts).runner = known_args.runner
-    _options.view_as(WOpts).num_workers = int(known_args.num_workers)
+    _options.view_as(WOpts).num_workers = 3
 
     _options.view_as(GCPOpts).project = known_args.project    
     _options.view_as(GCPOpts).region = known_args.region
@@ -403,15 +398,16 @@ def run(known_args, pipeline_args, save_main_session):
         lines = (
             extract_p 
             | ReadCSVLines(
-                    fpattern=known_args.input.format(date=known_args.date),
+                    fpattern=known_args.input,
                 )
         ) # list of string blob patterns to processs
 
-        output_path = known_args.output.format(date=known_args.date)
+        output_path = known_args.output
         _schema = [
             (col, META['raw']['schema'][col]['dtype']) for col in list(META['raw']['schema'])
         ]
 
+        
         lines_parsed = (
             lines
                 | 'Parse and Validate Geometry' >> ParseAndValidateGeometry()
