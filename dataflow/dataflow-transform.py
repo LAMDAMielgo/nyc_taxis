@@ -351,23 +351,16 @@ def get_parser():
         # ) # for local debug
     )
 
-    parser.add_argument(
-        "--date",
-        help = 'YYYY-MM strings with the monthly data to process joined by pipe "|"',
-        default = '2015-07', type=str
-    )
+    # parser.add_argument(
+    #     "--date",
+    #     help = 'YYYY-MM strings with the monthly data to process joined by pipe "|"',
+    #     default = '2015-07', type=str
+    # )
 
     # GOOGLE CLOUD PLATFORM ARGUMENTS
     parser.add_argument('--project',required=True, help='Specify Google Cloud project')
     parser.add_argument('--region', required=True, help='Specify Google Cloud region')
     parser.add_argument('--runner',required=True,  help='Specify Google Cloud runner')
-    parser.add_argument('--setup_file', help='Path to setup.py')
-    parser.add_argument('--num_workers',default=1, help='Num of CE instances')
-
-    # CUSTOM APACHE BEAM WITH FILES
-    #parser.add_argument(
-    # '--sdk_container_image', required=True, help='URI for image in artifact-registry'
-    # )
 
     return parser
 

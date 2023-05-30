@@ -129,29 +129,16 @@ def get_parser():
     parser.add_argument(
         '--output', required=True, help='Output dataset to dump tables'
     ) # gs://${PROJECT}/dataflow/${DATASETNAME}_{date}
-    parser.add_argument(
-        "--bq_temp",
-        help="temp folder for json files when creating temp table",
-        default = "gs://${PROJECT}/bq_temp/"
-    )
-    parser.add_argument(
-        "--date",
-        help = 'YYYY-MM strings with the monthly data to process joined by pipe "|"',
-        default = '2015-07', type=str
-    )
+    # parser.add_argument(
+    #     "--date",
+    #     help = 'YYYY-MM strings with the monthly data to process joined by pipe "|"',
+    #     default = '2015-07', type=str
+    # )
 
     # GOOGLE CLOUD PLATFORM ARGUMENTS
     parser.add_argument('--project',required=True, help='Specify Google Cloud project')
     parser.add_argument('--region', required=True, help='Specify Google Cloud region')
     parser.add_argument('--runner',required=True,  help='Specify Google Cloud runner')
-    parser.add_argument('--setup_file', help='Path to setup.py')
-    parser.add_argument('--num_workers', required=True, help='Num of CE instances')
-
-    # CUSTOM APACHE BEAM WITH FILES
-    #parser.add_argument(
-    # '--sdk_container_image', required=True, help='URI for image in artifact-registry'
-    # )
-
     return parser
 
 
@@ -211,7 +198,7 @@ def run(known_args, pipeline_args, save_main_session):
                         create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
                         # Deletes all data in the BigQuery table before writing.
                         write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
-                        custom_gcs_temp_location="gs://graphite-bliss-388109/tmp/bq"
+                        custom_gcs_temp_location=f"gs://{known_args.project}/tmp/bq"
                     )
         )
 
