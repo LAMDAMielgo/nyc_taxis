@@ -129,16 +129,10 @@ def get_parser():
     parser.add_argument(
         '--output', required=True, help='Output dataset to dump tables'
     ) # gs://${PROJECT}/dataflow/${DATASETNAME}_{date}
-    # parser.add_argument(
-    #     "--date",
-    #     help = 'YYYY-MM strings with the monthly data to process joined by pipe "|"',
-    #     default = '2015-07', type=str
-    # )
 
     # GOOGLE CLOUD PLATFORM ARGUMENTS
     parser.add_argument('--project',required=True, help='Specify Google Cloud project')
     parser.add_argument('--region', required=True, help='Specify Google Cloud region')
-    parser.add_argument('--runner',required=True,  help='Specify Google Cloud runner')
     return parser
 
 
@@ -148,7 +142,7 @@ def get_beam_option(known_args, pipeline_args, save_main_session):
 
     _options.view_as(SOpts).save_main_session = save_main_session
     _options.view_as(StdOpts).runner = known_args.runner
-    _options.view_as(WOpts).num_workers = int(known_args.num_workers)
+    _options.view_as(WOpts).num_workers = 3
 
     _options.view_as(GCPOpts).project = known_args.project    
     _options.view_as(GCPOpts).region = known_args.region
@@ -182,7 +176,7 @@ def run(known_args, pipeline_args, save_main_session):
         rows = (
             extract_p 
             | "Load parquet" >> beam.io.ReadFromParquet(
-                    file_pattern=known_args.input.format(date=known_args.date),
+                    file_pattern=known_args.input,
                     columns=columns
                 )
         ) # list of string blob patterns to processs
