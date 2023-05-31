@@ -65,7 +65,7 @@ META={
             'id',
         ],
     "bq_schema" : {
-        "tripdata" : [
+        "tripdata_tmp" : [
             {'name': "id",                      "type": "STRING"},
             {"name": "VendorID",                "type": "STRING"},
             {"name": "RateCodeID",              "type": "STRING"},
@@ -133,6 +133,7 @@ def get_parser():
     # GOOGLE CLOUD PLATFORM ARGUMENTS
     parser.add_argument('--project',required=True, help='Specify Google Cloud project')
     parser.add_argument('--region', required=True, help='Specify Google Cloud region')
+    parser.add_argument('--runner',required=True,  help='Specify Google Cloud runner')
     return parser
 
 
@@ -181,7 +182,7 @@ def run(known_args, pipeline_args, save_main_session):
                 )
         ) # list of string blob patterns to processs
 
-        table_name = 'tripdata'
+        table_name = 'tripdata_tmp'
         tripdata_bq = (
             rows
                 | "fillnan data" >> beam.Map(fill_nan(schema=tables[table_name]))
@@ -191,7 +192,8 @@ def run(known_args, pipeline_args, save_main_session):
                         # Creates the table in BigQuery if it does not yet exist.
                         create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
                         # Deletes all data in the BigQuery table before writing.
-                        write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
+                        # It is important here the append to always add data
+                        write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
                         custom_gcs_temp_location=f"gs://{known_args.project}/tmp/bq"
                     )
         )
