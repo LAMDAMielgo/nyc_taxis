@@ -72,6 +72,7 @@ About findings that I have check on the data:
 
   * Drops datetimes that do not follow the expected string format
   * if `tpep_pickup` is later than `tpep_dropoff`, then it is also filtered, since this is an error of the sensor.
+  * 
 * **Numeric data**:
 
   There are rows that couldn't be parsed as numeric due to bad data entry, pe: `0.5.1`or rows that had missing fields and during its ingestion the dataflow-load would fail with a `RuntimeError,  reason 'invalid'`. During the ingestion, Beam creates a JSON in a tmp/ file, therefore the dtype may not be valid for JSON. This is the main reason why I choose saving the transformed data into a .parquet format with an associated schema, that is not the final one, but allows to filter cases.
@@ -81,7 +82,11 @@ About findings that I have check on the data:
 
   There are a few unknown classes in the '*ID' columns that where mapped with a '9999' as a string nan value.
 
-New columns that I ADD
+There are new columns that I add during the ingestion phase (see SQL file):
+
+* createdAT TIMESTAMP : field to partition tables on their ingestion time.
+* trip_minutes : adding an operation on tpep_pickup_datetime and tpep_dropdown_datetime
+* geohash 7, to cluster geometries y their proximity (kind of, it is a scalable grid). I picked a precision of 7 since it is just below 100m which seems useful and generic enough.
 
 Development and bottleneck trough this assigment:
 
@@ -100,9 +105,9 @@ Development and bottleneck trough this assigment:
 
 Here are the result for the data that I could process (2015-04 EXCEPT FILE 18):
 
-    **a**. What is the average fare per mile? **6.169 fare/mile**
+**a**. What is the average fare per mile? **6.169 fare/mile**
 
-    **b**. Which are the 10 pickup taxi zones with the highest average tip?
+**b**. Which are the 10 pickup taxi zones with the highest average tip?
 
 | 1  | dr5r5vb |  |
 | -- | ------- | - |
