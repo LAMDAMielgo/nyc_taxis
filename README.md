@@ -18,9 +18,7 @@ There are three tasks to do in this project:
 
 1. **Write an ETL process able to do the following:**
 
-   **a.** Download Taxi data from our own Google Cloud Storage bucket. The data is stored in this public bucket:
-
-   ```	gs://data_eng_test/ ```
+   **a.** Download Taxi data from our own Google Cloud Storage bucket. The data is stored in this public bucket:   `gs://data_eng_test/ `
 
    ​	
 
@@ -48,231 +46,100 @@ There are three tasks to do in this project:
 
 ----
 
-## PROJECT CONFIGURATION
+## ETL Design and Stack
 
-All this project runs on Google Cloud Platform connected to my device. For this, I have created a mock gmail account from which access the free $300/270€ credits available and used the default project *My First Project* 
+This ETL has been made using **Apache Beam Python SDK**, **Aiflow** and **BQ SQL**, all using a personal Google Cloud Platform free account in order to have access to the **DataFlow, Google Storage and BigQuery API**s.
 
-The steps that needed to be followed after having the online console available:
+![untitled-1](/home/laura/Downloads/untitled-1.png)
 
-* Authentified and verified in local: 
+As shown in the diagram, there are three main steps, which the final hasn't been developed as a DAG do to time constrains:
 
-  ```
-  gcloud auth login
-  gclod auth logic list
-  ```
+ 1.  A monthly-triggered event that looks for new data, or data within the current month; since all the files have a YYYY-MM string.
 
-  
-
-* Created env variables for project_id, region, image repository; set gcloud config and created a main bucket to work with. We also need to enable some APIs.
-
-  ```
-  export PROJECT=graphite-bliss-388109
-  export REGION='europe-southwest1'  
-  export DATASETNAME='yellow_tripdata'
-  
-  gcloud config set project ${PROJECT}
-  gcloud config set compute/region ${REGION}
-  
-  gcloud services enable bigquery.googleapis.com
-  gcloud services enable dataflow.googleapis.com
-  
-  gcloud storage buckets create gs://${PROJECT}
-  bq mk -d ${DATASETNAME} --location=${REGION}
-  ```
-
-* Verified that I can access the raw data: 
-
-  ```
-  gcloud storage ls --recursive gs://data_eng_test/
-  ```
-
-* Creation of custom apache-beam image with the repository code. This is something that needs to be done since dataflow doesn't allow to copy files, it only executes code from a .py file.
-
-  For this step I have followed [this](!https://cloud.google.com/dataflow/docs/guides/using-custom-containers?hl=es-419#create_and_build_the_container_image) documentation, that explain step-by-step how to create a custom image with google build.
-
-  ```
-  gcloud artifacts repositories create {$REPOSITORY}\
-     --repository-format=docker \
-     --location=${REGION} \
-     --async
      
-  gcloud auth configure-docker ${REGION}-docker.pkg.dev
-  
-  gcloud builds submit --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/dataflow/${CUSTOM_IMG} .
-  
-  europe-southwest1-docker.pkg.dev/graphite-bliss-388109/repository/dataflow/beam_nyc_taxis
-  ```
 
-  The is closed to the max recommended (4.39 < 5GiB) and needs about 15minutes to build in the artifact registry.
+ 2.  If there are new files, this DAG then triggers another one in which contains the ETL as is. This event is made as scalable as possible following a BATCH PROCESSING with one worker per file. 
+
+     
+
+ 3.  The ETL has three steps, my main idea was to divide them into: loading modeling (applying schema) and verification (filtering data). At the end I found a DataFlow template that unzips data, therefore there are mainly two steps : 
+
+     	1. data-transform.py that does all the heavy work: checking zeros, null, filtering data without geometries..
+     	2. data-load.py that fetches the data divided into each part and loads it into BigQuery.
 
 ----
 
-## Dataflow jobs
+## Development and Report on data cuality
 
-Steps followed to make the ETL:
+About findings that I have check on the data: 
 
-* Unzip files from source: the files can be processed from a DirectRunner launched locally, but when launched in the cloud it throughs a `FileNotFound`. I have used a [public dataflow template](!https://stackoverflow.com/questions/49541026/how-do-i-unzip-a-zip-file-in-google-cloud-storage) that allows to unzip files from a gcp gs:
+* **Geometric data**:	
 
-  ```
-  gcloud dataflow jobs run unzip \
-  --gcs-location gs://dataflow-templates-${REGION}/latest/Bulk_Decompress_GCS_Files \
-  --region ${REGION} \
-  --num-workers 1 \
-  --staging-location gs://${PROJECT}/temp \
-  --parameters \
-  inputFilePattern=gs://data_eng_test/*.csv.zip,\
-  outputDirectory=gs://${PROJECT}/${DATASETNAME}/,\
-  outputFailureFile=gs://${PROJECT}/${DATASETNAME}/decomperror.txt
-  ```
+  When approaching the assesment, I first check about its projection (usually data is on `EPSG:4326` which is the only accepted crs by BQ and the common one for webs) and the occurrence of unvalid points. 
 
-
-
-* Process data to BigQuery: all the code has been developed in a script called `main.py` that can be launched into a dataflow job locally with the following code:
-
-  ```
-  python all_joined.py \
-    --project=${PROJECT} \
-    --region=${REGION} \
-    --runner=DataflowRunner\
-    --setup_file=./setup.py\
-    --input=gs://${PROJECT}/${DATASETNAME}/${DATASETNAME}_{date}_00*.csv\
-    --output=${PROJECT}:${DATASETNAME}.raw_{date}\
-    --num_workers=5\
-    --worker_harness_container_image=apache/beam_python3.9_sdk:2.47.0 
-  ```
+  Aprox about 10% of the data (by the files that I used for exploration) have points that may be wrong.
 
   
 
-This dataflow has the following steps:
+  When plotting the Pts with geopandas and contextualy there are two issues:
 
-* Paralellises by each line from the input passed.
+  	* POINT(0 0) : Something when wrong during the data capture phase and no data was collected. In this case my decision has been to filter all raw that do not have lat, lon.
+  	* POINT(-86 50) : Valid geography, but it is not near NYC; maybe the sensor data was exposed to something that altered its precision. This hasn't been addressed, although filtering by (0.02 - 0.98) could be a solution, because of the nature of the ETL: it transforms the data row by row and  within a single file, therefore each quantile in earch DAG would be different.
+  	* GPS precision: points come in 15 decimals, which corresponds with a precision of less than cm. For this use case it doesn't make sense to save such big numerics, a precision of 5 (about 2m) should be enough to draw quality insights, although in the process I have chose to save 6 digits (1m precision). 
 
-* Parses and validates the geometry data types: 
+* **Timestamp data**:	
 
-  * Drop row if lat, lon = 0, 0. If no coords, then geospatial analysis is not possible.
-
-  * Str2Float and round digits: GEOGRAPHY data precision depends on the len of decimals. In this case, I verified that the projection of the raw data is `EPSG:4326`-which is the most usual (web compatibility)- and because it is a degree-based projection, it is more sensible to precision errors.
-
-    In this dataset, most points come with a precision of 15 digits, which is very precise (less than mm, see link in code). I decided to round to a 7 decimal float, which a bit below the meter precision, since for this use-case we are locating cars (3mx5m) in a very big territory.
-
-    
-
-    There are other issues with the geometrical data that haven't been taken into account:
-
-    	* Some points, when plotted, are not even in America. In the data discovery notebook I checked that filtering outliers in the 0.2-0.98 IQR range would work. In order to do this in the dataflow job, we would need to create a PCollection for that, CoGroupByKey (full join) and Filter by inequalities.
-    	* There are other points that come with less than 5 decimals, in this case a analysis of how many data is too imprecise to add value is needed.
-
-* Parses and validates datetime data: 
+  The checks that I made in the ETL are the following:
 
   * Drops datetimes that do not follow the expected string format
+
   * if `tpep_pickup` is later than `tpep_dropoff`, then it is also filtered, since this is an error of the sensor.
 
-​	
+* **Numeric data**:
 
-Other things that could be done in this stage, but haven't been implemented:
+  There are rows that couldn't be parsed as numeric due to bad data entry, pe: `0.5.1`or rows that had missing fields and during its ingestion the dataflow-load would fail with a `RuntimeError,  reason 'invalid'`. During the ingestion, Beam creates a JSON in a tmp/ file, therefore the dtype may not be valid for JSON. This is the main reason why I choose saving the transformed data into a .parquet format with an associated schema, that is not the final one, but allows to filter cases.
 
-* Mapping the IDs columns, for `vendor_id` and `rate_code_id` we know the mapping for theirs values and since they are not very extensive (6) it is better for readability to map those values into the dataset.
-* Drop columns based on validation rules: if `passenger_count` and `trip_distance` are zero; it could be considered human errors when doing the data entry.
-* Creation of an unique id
+  Despite that, I still had some errors through the ingestion.
+
+* **Ordinal and bool data**  :
+
+  There are a few unknown classes in the '*ID' columns that where mapped with a '9999' as a string nan value.
+
+New columns that I ADD
 
 
 
-In relation to the job optimization and scaling:
+Development and bottleneck trough this assigment:
 
-* The provided format .csv.zip is very tricky to use in a dataflow job; when developing in local, I was able to decompress everything, but somehow it threw a `FileNotFoundError` in the cloud job.
-* The current design has a bottleneck at the 'ReadCSVLines', but haven't found a better solution.
-* The dataflow job is designed to be launch for every monthly collection of data, since it is a monthly-updated dataset. It can be scaled with airflow to launch a single DAG for every new monthly set of data.
-* GCloud Dataflow has a very important limitation: it only copies the main.py file into the apache instances; therefore programming extended ETLs in various files is a bit of a pain. To solve this limitation, one has to build a custom apache-beam image with the code inside and store it in the artifacts registry, creating before hand a repository. This is something that I explored, but apache images are very big and it is a time-consuming way to work on such a small ETL.
+* Although I was confident enough to have everything working, setting up Airflow and GCP was time consuming and I even if I could make work every piece of the ETL, the design presented above is not implemented. 
+  * I had lots of trouble trying to set up Airflow with GCP, and launching locally (saving into folders and using Beam with DirectRunner) is not an option due to my computer limitations.
+  * The final BigQuery ingestion into a single table instead of making all the modeling in a single step was a direct decision of these difficulties.
 
-----
-
-## Project Structure
-
-```
-nyc_taxis_etl
- |                           # local files
- | .env/
- | .sample_data/
-	| ..
- | etl / 					# custom dataflow etl job for GS to BQ
- 	| main.py
- | dag /					# airflow dag
- 	| DockerFile
- 	| dag_yellow_tripdata.py
- | artifact /				# code and docker to build custom apache img
- 	| DockerFile
-    | main.py
-    | setup.py
- 	| src /
- 		| __init__.py
- 		| run.py
- 		| transformations.py
- 		| metadata.py
- | requirements.txt
- | data_discovery.ipynb
- | .gitgignore
- | README.md
- 
- 
-```
+* Batch processing a single file has a bottleneck on ReadCSVLines, it could be probably better if each file could be read on batches.
+* File compression on source
+* DataFlow limitation with project organization : it only allows for a single file launch
+* There are a few columns through the ETL that are missing:
+  * 
 
 ---
 
-## Dependencies
+## QUERY RESULT
 
-```
-```
+Here are the result for the data that I could process (2015-04 EXCEPT FILE 18):
 
+​	**a**. What is the average fare per mile? **6.169 fare/mile**
 
+​	**b**. Which are the 10 pickup taxi zones with the highest average tip?
 
-```
-gsutil iam ch serviceAccount:${PROJECT}@storage-transfer-service.iam.gserviceaccount.com:roles/storage.admin gs://${PROJECT}/raw
-```
-
-```
-gsutil cat gs://data_eng_test/*.csv.zip | zcat |  gsutil cp - gs://${PROJECT}/raw/*.csv
-```
-
-
-
-```
-python all_joined.py \
-  --project=${PROJECT} \
-  --region=${REGION} \
-  --runner=DataflowRunner\
-  --input=gs://${PROJECT}/${DATASETNAME}/${DATASETNAME}_{date}_00*.csv\
-  --output=gs://${PROJECT}/dataflow/${DATASETNAME}_{date}\
-  --worker_harness_container_image=apache/beam_python3.9_sdk:2.47.0
-  
-python all_joined.py \
-  --project=${PROJECT} \
-  --region=${REGION} \
-  --runner=DataflowRunner\
-  --setup_file=./setup.py\
-  --input=gs://${PROJECT}/${DATASETNAME}/${DATASETNAME}_{date}_00*.csv\
-  --output=gs://${PROJECT}/dataflow/${DATASETNAME}_{date}\
-  --num_workers=5\
-  --worker_harness_container_image=apache/beam_python3.9_sdk:2.47.0
-  
- 
-python all_joined.py \
-  --project=${PROJECT} \
-  --region=${REGION} \
-  --runner=DataflowRunner\
-  --setup_file=./setup.py\
-  --input=gs://${PROJECT}/${DATASETNAME}/${DATASETNAME}_{date}_00*.csv\
-  --output=${PROJECT}:${DATASETNAME}.raw_{date}\
-  --num_workers=10\
-  --worker_harness_container_image=apache/beam_python3.9_sdk:2.47.0
- 
-  
-python all_joined.py \
-  --project=${PROJECT} \
-  --region=${REGION} \
-  --runner=DirectRunner\
-  --input=gs://${PROJECT}/${DATASETNAME}/${DATASETNAME}_{date}_00*.csv\
-  --output=gs://${PROJECT}/dataflow/${DATASETNAME}_{date}\
-  --date=2015-01\
-  --num_workers=3
-```
+| 1    | dr5r5vb |      |
+| ---- | ------- | ---- |
+| 2    | dr5rjn1 |      |
+| 3    | dr5quvx |      |
+| 4    | dr5xmqs |      |
+| 5    | dr5r5v1 |      |
+| 6    | dr5jzh5 |      |
+| 7    | dr73p56 |      |
+| 8    | dr5pnc9 |      |
+| 9    | dr7014u |      |
+| 10   | dr5ptmt |      |
 
