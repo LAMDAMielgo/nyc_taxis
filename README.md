@@ -50,7 +50,7 @@ There are three tasks to do in this project:
 
 This ETL has been made using **Apache Beam Python SDK**, **Aiflow** and **BQ SQL**, all using a personal Google Cloud Platform free account in order to have access to the **DataFlow, Google Storage and BigQuery API**s.
 
-![untitled-1](/home/laura/Downloads/untitled-1.png)
+[img](blob:https://whimsical.com/109ea195-f388-4b80-b8a8-058e76911ec6)
 
 As shown in the diagram, there are three main steps, which the final hasn't been developed as a DAG do to time constrains:
 
