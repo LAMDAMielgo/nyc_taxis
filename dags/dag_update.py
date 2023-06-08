@@ -1,4 +1,5 @@
 import os
+import time
 
 from datetime import datetime, timedelta
 from dataclasses import dataclass
@@ -41,10 +42,6 @@ default_args = {
 }
 dag_desc = """Dag to get all the data from the NYC Taxis Source. This
 data is updated monthly and has N amount of parts."""
-bq_datasets = {
-    'tmp': 'tripdata_{date}_tmp', 
-    'apppend': ['tripdata', 'pickup', 'dropdown']
-}
 
 
 def update_config():
@@ -52,13 +49,16 @@ def update_config():
         'DATASETNAME'   : 'yellow_tripdata',
         "PROJECT"       : 'graphite-bliss-388109',
         "REGION"        : 'europe-southwest1',
-        "CODEHOME"      : '/home/laura/Pruebas/nyc_taxis',
+        "CODEHOME"      : {
+            'LOCAL': '/home/laura/Pruebas/nyc_taxis/dataflow',
+            'GCS'  : "gs://{project}/code"
+        }
     }
     paths_={
         'source_uri'    : "gs://data_eng_test/",
         'raw_path'      : 'gs://{project}/{dataset}/{date}/',
         'staging_path'  : 'gs://{project}/dataflow/{dataset}/',
-        'bq_ds_temp'    : '{dataset}_tmp',
+        'bq_ds_temp'    : '{dataset}_tmp2',
         'bq_ds'         : '{dataset}'
     }
 
@@ -82,13 +82,16 @@ DAG_PARAMS = update_config()
 
 # DAG1
 with DAG(
-    dag_id='nyct_dag_update', 
+    dag_id='nyc_update', 
     default_args=default_args, 
     description=dag_desc,
-    start_date=datetime(2015,8,1),
+    start_date=datetime(2015,8,2),
+    schedule_interval=None,
+    is_paused_upon_creation=True,
     tags=['etl', 'nyc_taxi_data'],
     max_active_runs=1, 
-    concurrency=1, 
+    max_active_tasks=4,
+    concurrency=3, 
     catchup=False
 ) as dag:
 
@@ -115,8 +118,10 @@ with DAG(
                 if f.endswith('.csv.zip') and (NOW in f):
                     f = f.strip('.csv.zip')
                     _f.append(f)
-
+                    
             context["ti"].xcom_push(key='filesnames', value=_f)
+            print(f"Found : {len(_f)}")
+
 
     def iter_through_files(**context):
 
@@ -126,46 +131,58 @@ with DAG(
         )
         print(f"\n FILENAMES : {filenames}")
 
-        for filename in filenames:
+        for i, f in enumerate(filenames):
             
-            source_uri = DAG_PARAMS['source_uri']+filename+'.csv.zip'
-            filepath_at_raw = DAG_PARAMS['raw_path']+filename+'.csv'
-            filepath_at_staging = DAG_PARAMS['staging_path']+filename
-            bq_tmp_table = DAG_PARAMS['bq_ds_temp']+filename
+            source_uri = DAG_PARAMS['source_uri']+f+'.csv.zip'
+            filepath_at_raw = DAG_PARAMS['raw_path']+f+'.csv'
+            filepath_at_staging = DAG_PARAMS['staging_path']+f
+            bq_tmp_table = DAG_PARAMS['bq_ds_temp']
 
             build_dag_run_conf_and_trigger_dag_update = TriggerDagRunOperator(
-                task_id=f'trigger_etl_for_{filename}',
-                trigger_dag_id="nyct_dag_etl",
+                task_id=f'trigger_etl_for_{f}',
+                trigger_dag_id="nyc_etl",
                 conf={
                     'PROJECT'                 : DAG_PARAMS["PROJECT"],
                     "REGION"                  : DAG_PARAMS["REGION"],
-                    "CODEHOME"                : DAG_PARAMS["CODEHOME"],
+                    "CODEHOME"                : DAG_PARAMS["CODEHOME"]['GCS'].format(project=DAG_PARAMS["PROJECT"]),
                     "NOW"                     : NOW,
-                    "filename"                : filename,
+                    "filename"                : f,
                     "source_uri"              : source_uri,
                     "filepath_at_raw"         : filepath_at_raw,
                     "filepath_at_staging"     : filepath_at_staging,
                     "bq_tmp_table"            : bq_tmp_table
-                },
-                reset_dag_run=True
+                }
             )
 
-            print(f"Trigger dag: {filename}")
+            print(f"Trigger dag: {f}")
             build_dag_run_conf_and_trigger_dag_update.execute(context)
+
 
     # --------------------------------------------------------------------------  
         
-    create_temp_monthly_dataset = BigQueryCreateEmptyTableOperator(
-        task_id="create_monthly_temp_dataset", 
+    create_temp_monthly_dataset = BigQueryCreateEmptyDatasetOperator(
+        task_id="create_temp_monthly_dataset", 
+        dataset_id= DAG_PARAMS['bq_ds_temp'],
+        project_id= DAG_PARAMS["PROJECT"],
+        location  = DAG_PARAMS["REGION"],
+        # if_exists = "log" # fail dag if the temp dataset for this month already exists
+        exists_ok = True
+    )
+    
+    create_temp_monthly_table = BigQueryCreateEmptyTableOperator(
+        task_id="create_temp_monthly_table", 
         dataset_id= DAG_PARAMS['bq_ds_temp'],
         table_id  = bq_datasets['tmp'].format(date=NOW),
         project_id= DAG_PARAMS["PROJECT"],
         location  = DAG_PARAMS["REGION"],
-        if_exists = "log" # fail dag if the temp dataset for this month already exists
+        # if_exists = "log" # fail dag if the temp dataset for this month already exists
+        exists_ok = True
     )
 
+
+    # NOTE: This two functions could be just one that triggers when finding a file.
     fetch_files = PythonOperator(
-        task_id=f'find_souce_files_for_{NOW}',
+        task_id=f'find_source_files_for_{NOW}',
         python_callable=find_source_files, 
         show_return_value_in_logs=True,
         provide_context=True
@@ -180,8 +197,7 @@ with DAG(
 
     # --------------------------------------------------------------------------  
 
-    dag_start >> create_temp_monthly_dataset    >> _report >> dag_end
-    dag_start >> fetch_files >> iter_dataflow   >> _report >> dag_end
-
+    dag_start >> create_temp_monthly_dataset >>  create_temp_monthly_table  >> _report >> dag_end
+    dag_start >> fetch_files                 >> iter_dataflow               >> _report >> dag_end
 # --------------------------------------------------------------------------
 
