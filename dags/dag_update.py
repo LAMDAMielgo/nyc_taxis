@@ -97,9 +97,9 @@ with DAG(
 
     dag_start = EmptyOperator(task_id="dag_start")        
     dag_end   = EmptyOperator(task_id="dag_end")
-    _report = EmptyOperator(task_id="generate_report")
+    # _report = EmptyOperator(task_id="generate_report")
 
-    def find_source_files(**context):
+    def find_files(**context):
             """ Retrieves all the parts that need to be unziped and processed.
             """
             uri = DAG_PARAMS['source_uri']
@@ -118,44 +118,33 @@ with DAG(
                 if f.endswith('.csv.zip') and (NOW in f):
                     f = f.strip('.csv.zip')
                     _f.append(f)
-                    
+
+                    source_uri = DAG_PARAMS['source_uri']+f+'.csv.zip'
+                    filepath_at_raw = DAG_PARAMS['raw_path']+f+'.csv'
+                    filepath_at_staging = DAG_PARAMS['staging_path']+f
+                    bq_tmp_table = DAG_PARAMS['bq_ds_temp']
+
+                    build_dag_run_conf_and_trigger_dag_update = TriggerDagRunOperator(
+                        task_id=f'trigger_etl_for_{f}',
+                        trigger_dag_id="nyc_etl",
+                        conf={
+                            'PROJECT'                 : DAG_PARAMS["PROJECT"],
+                            "REGION"                  : DAG_PARAMS["REGION"],
+                            "CODEHOME"                : DAG_PARAMS["CODEHOME"]['GCS'].format(project=DAG_PARAMS["PROJECT"]),
+                            "NOW"                     : NOW,
+                            "filename"                : f,
+                            "source_uri"              : source_uri,
+                            "filepath_at_raw"         : filepath_at_raw,
+                            "filepath_at_staging"     : filepath_at_staging,
+                            "bq_tmp_table"            : bq_tmp_table
+                        }
+                    )
+
+                    print(f"Trigger dag: {f}")
+                    build_dag_run_conf_and_trigger_dag_update.execute(context)
+
             context["ti"].xcom_push(key='filesnames', value=_f)
             print(f"Found : {len(_f)}")
-
-
-    def iter_through_files(**context):
-
-        filenames = context["ti"].xcom_pull(
-            task_ids = fetch_files.task_id,
-            key="filesnames"
-        )
-        print(f"\n FILENAMES : {filenames}")
-
-        for i, f in enumerate(filenames):
-            
-            source_uri = DAG_PARAMS['source_uri']+f+'.csv.zip'
-            filepath_at_raw = DAG_PARAMS['raw_path']+f+'.csv'
-            filepath_at_staging = DAG_PARAMS['staging_path']+f
-            bq_tmp_table = DAG_PARAMS['bq_ds_temp']
-
-            build_dag_run_conf_and_trigger_dag_update = TriggerDagRunOperator(
-                task_id=f'trigger_etl_for_{f}',
-                trigger_dag_id="nyc_etl",
-                conf={
-                    'PROJECT'                 : DAG_PARAMS["PROJECT"],
-                    "REGION"                  : DAG_PARAMS["REGION"],
-                    "CODEHOME"                : DAG_PARAMS["CODEHOME"]['GCS'].format(project=DAG_PARAMS["PROJECT"]),
-                    "NOW"                     : NOW,
-                    "filename"                : f,
-                    "source_uri"              : source_uri,
-                    "filepath_at_raw"         : filepath_at_raw,
-                    "filepath_at_staging"     : filepath_at_staging,
-                    "bq_tmp_table"            : bq_tmp_table
-                }
-            )
-
-            print(f"Trigger dag: {f}")
-            build_dag_run_conf_and_trigger_dag_update.execute(context)
 
 
     # --------------------------------------------------------------------------  
@@ -172,32 +161,23 @@ with DAG(
     create_temp_monthly_table = BigQueryCreateEmptyTableOperator(
         task_id="create_temp_monthly_table", 
         dataset_id= DAG_PARAMS['bq_ds_temp'],
-        table_id  = bq_datasets['tmp'].format(date=NOW),
+        table_id  = DAG_PARAMS['DATASETNAME']+NOW+'_tmp',
         project_id= DAG_PARAMS["PROJECT"],
         location  = DAG_PARAMS["REGION"],
         # if_exists = "log" # fail dag if the temp dataset for this month already exists
         exists_ok = True
     )
 
-
-    # NOTE: This two functions could be just one that triggers when finding a file.
-    fetch_files = PythonOperator(
-        task_id=f'find_source_files_for_{NOW}',
-        python_callable=find_source_files, 
-        show_return_value_in_logs=True,
-        provide_context=True
-    )
-
     iter_dataflow = PythonOperator(
         task_id=f'trigger_dataflow',
-        python_callable=iter_through_files, 
+        python_callable=find_files, 
         show_return_value_in_logs=True,
         provide_context=True
     )
 
     # --------------------------------------------------------------------------  
 
-    dag_start >> create_temp_monthly_dataset >>  create_temp_monthly_table  >> _report >> dag_end
-    dag_start >> fetch_files                 >> iter_dataflow               >> _report >> dag_end
+    dag_start >> create_temp_monthly_dataset >>  create_temp_monthly_table  >> dag_end
+    dag_start >> iter_dataflow                                              >> dag_end
 # --------------------------------------------------------------------------
 
