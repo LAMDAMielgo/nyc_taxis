@@ -3,4 +3,3 @@ pandas==2.0.1
 geopandas==0.13.0
 apache-beam==2.47.00
 apache-airflow-providers-google==10.1.1
-install protobuf==3.20.*

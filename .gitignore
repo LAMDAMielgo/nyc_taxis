@@ -136,3 +136,8 @@ scraps/
 # local airflow
 airflow-install.sh
 airflow.cfg
+airflow/
+airflow-webserver.pid
+airflow.db
+standalone_admin_password.txt
+webserver_config.py
